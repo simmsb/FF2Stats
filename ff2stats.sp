@@ -10,7 +10,7 @@ freak fortress 2 status, written by nitros
 #include <freak_fortress_2>
 #include <clientprefs>
 
-#define PLUGIN_VERSION "0.0.1"
+#define PLUGIN_VERSION "0.1.0"  // it works so I give myself 0.1.0 
 
 #define STATS_COOKIE "ff2stats_onforuser"
 
@@ -24,25 +24,23 @@ public Plugin:myinfo=
   url="ben@bensimms.moe"
 };
 
-
 new Handle:g_bossStatsCookie;
 new Handle:db;
 
 public void OnPluginStart()
 {
-  g_bossStatsCookie = RegClientCookie(STATS_COOKIE, "Enable stats for user", CookieAccess_Protected);
+	g_bossStatsCookie = RegClientCookie(STATS_COOKIE, "Enable stats for user", CookieAccess_Protected);
   InitDB(db);
   HookEvent("teamplay_round_win", OnRoundEnd);
-
-
   RegConsoleCmd("ff2stats", statsToggleCmd);
+	LoadTranslations("ff2stats.phrases");
 }
 
 public Action:statsToggleCmd(int client, int args)
 {
 	if(!IsValidClient(client))
 	{
-		return Plugin_Continue;
+		return Plugin_Handled;
 	}
 
 	statsTogglePanel(client);
@@ -53,7 +51,7 @@ public Action:statsTogglePanel(client)
 {
 	if(!IsValidClient(client))
 	{
-		return Plugin_Continue;
+		return Plugin_Handled;
 	}
 
 	new Handle:panel=CreatePanel();
@@ -62,7 +60,7 @@ public Action:statsTogglePanel(client)
 	DrawPanelItem(panel, "Off");
 	SendPanelToClient(panel, client, statsTogglePanelH, MENU_TIME_FOREVER);
 	CloseHandle(panel);
-	return Plugin_Continue;
+	return Plugin_Handled;
 }
 
 public statsTogglePanelH(Handle:menu, MenuAction:action, client, selection)
@@ -75,10 +73,9 @@ public statsTogglePanelH(Handle:menu, MenuAction:action, client, selection)
 		}
 		else  //On
 		{
-			//If they already have music enabled don't do anything
 			setStatsCookie(client, true);
 		}
-		CPrintToChat(client, "{olive}[FF2stats]{default} %t", "ff2stats", selection==2 ? "off" : "on");
+		CPrintToChat(client, "{olive}[FF2stats]{default} FF2stats are %t for you!", selection==2 ? "off" : "on");
 	}
 }
 
@@ -86,7 +83,7 @@ public statsTogglePanelH(Handle:menu, MenuAction:action, client, selection)
 InitDB(&Handle:DBHandle)
 {
   new String:Error[255];
-  DBHandle = SQL_Connect("stats_db", true, Error, sizeof(Error));
+  DBHandle = SQL_Connect("default", true, Error, sizeof(Error));
 
   if(DBHandle == INVALID_HANDLE)
   {
@@ -135,8 +132,7 @@ void addGameToDB(int steamid, const char[] boss_name, bool win)
   SQL_EscapeString(db, boss_name, new_boss_name, buffer_len);
 
   /* Build the query */
-  Format(query, sizeof(query), "INSERT INTO <tablehere> (steamid, bossname, win) VALUES (%d, '%s', %d)", steamid, new_boss_name, win);
-
+  Format(query, sizeof(query), "INSERT INTO player_stats (steamid, bossname, win) VALUES (%d, '%s', %d)", steamid, new_boss_name, win);
   /* Execute the query */
   SQL_LockDatabase(db);
   SQL_FastQuery(db, query);
@@ -159,15 +155,21 @@ public Action:OnRoundEnd(Handle:event, const String:name[], bool:dontBroadcast)
   new boss = -1;
   for(new client; client<MaxClients; client++)
   {
-    if(!StatsEnabledForClient(client)){continue;} // dont add if not counting stats
-    boss=FF2_GetBossIndex(client);
-    if(!(boss==-1)) // we have a boss
-    {
-      new bossSteamID = GetSteamAccountID(client); // steamid
-      if (bossSteamID==0){continue;} // dont break on invalid steamid
-      FF2_GetBossSpecial(boss, bossName, sizeof(bossName));
-      addGameToDB(bossSteamID, bossName, bossWin);
-    }
+		if(IsValidClient(client)){
+	    if (!StatsEnabledForClient(client)) {
+				continue;
+			} // dont add if not counting stats
+	    boss=FF2_GetBossIndex(client);
+	    if (!(boss==-1)) { // we have a boss
+	      new bossSteamID = GetSteamAccountID(client); // steamid
+	      if (bossSteamID==0) {
+					continue;
+				} // dont break on invalid steamid
+	      FF2_GetBossSpecial(boss, bossName, sizeof(bossName));
+				CPrintToChat(client, "{olive}[FF2stats]{default} FF2stats are enabled for you, a %s was counted for %s.", bossWin==1 ? "win" : "loss", bossName);
+	    	addGameToDB(bossSteamID, bossName, bossWin);
+	    }
+		}
   }
 
   return Plugin_Continue;
