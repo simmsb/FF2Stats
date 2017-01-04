@@ -10,9 +10,10 @@ freak fortress 2 status, written by nitros
 #include <freak_fortress_2>
 #include <clientprefs>
 
-#define PLUGIN_VERSION "0.1.0"  // it works so I give myself 0.1.0 
+#define PLUGIN_VERSION "0.1.0"  // it works so I give myself 0.1.0
 
 #define STATS_COOKIE "ff2stats_onforuser"
+#define STATS_TABLE "player_stats"
 
 
 public Plugin:myinfo=
@@ -36,6 +37,49 @@ public void OnPluginStart()
 	LoadTranslations("ff2stats.phrases");
 }
 
+//
+//			STATS CLEARING MENU
+//
+public Action:statsClearCmd(int client, int args)
+{
+	if(!IsValidClient(client)) {
+		return Plugin_Handled;
+	}
+
+	statsClearPanel(client);
+	return Plugin_Handled;
+}
+
+public Action:statsTogglePanel(client)
+{
+	new Handle:panel=CreatePanel();
+	SetPanelTitle(panel, "Are you sure you want to clear your boss stats!");
+	DrawPanelItem(panel, "Yes");
+	DrawPanelItem(panel, "No");
+	SendPanelToClient(panel, client, statsClearPanelH, MENU_TIME_FOREVER);
+	CloseHandle(panel);
+	return Plugin_Handled;
+}
+
+public statsTogglePanelH(Handle:menu, MenuAction:action, client, selection)
+{
+	if(IsValidClient(client) && action==MenuAction_Select)
+	{
+		if(selection==1)  //Yes
+		{
+			removeUserStats(GetSteamAccountID(client));
+			CPrintToChat(client, "{olive}[FF2stats]{default} Cleared your boss stats!");
+		}
+	}
+}
+//
+//
+//
+
+
+//
+//			STATS TOGGLE MENU
+//
 public Action:statsToggleCmd(int client, int args)
 {
 	if(!IsValidClient(client))
@@ -49,13 +93,8 @@ public Action:statsToggleCmd(int client, int args)
 
 public Action:statsTogglePanel(client)
 {
-	if(!IsValidClient(client))
-	{
-		return Plugin_Handled;
-	}
-
 	new Handle:panel=CreatePanel();
-	SetPanelTitle(panel, "Turn stats for you when you're boss...");
+	SetPanelTitle(panel, "Enable or disable boss stats");
 	DrawPanelItem(panel, "On");
 	DrawPanelItem(panel, "Off");
 	SendPanelToClient(panel, client, statsTogglePanelH, MENU_TIME_FOREVER);
@@ -78,6 +117,9 @@ public statsTogglePanelH(Handle:menu, MenuAction:action, client, selection)
 		CPrintToChat(client, "{olive}[FF2stats]{default} FF2stats are %t for you!", selection==2 ? "off" : "on");
 	}
 }
+//
+//
+//
 
 
 InitDB(&Handle:DBHandle)
@@ -90,13 +132,14 @@ InitDB(&Handle:DBHandle)
     SetFailState(Error);
   }
   new String:Query[255];
-  Format(Query, sizeof(Query), "CREATE TABLE IF NOT EXISTS player_stats (steamid INT, bossname TEXT, win INT)");
+  Format(Query, sizeof(Query), "CREATE TABLE IF NOT EXISTS %s (steamid INT, bossname TEXT, win INT)", STATS_TABLE);
   SQL_LockDatabase(DBHandle);
   SQL_FastQuery(DBHandle, Query);
   SQL_UnlockDatabase(DBHandle);
 }
 
 
+//	set stats cookie for client, type: bool
 setStatsCookie(int client, bool val)
 {
   if(!IsValidClient(client) || IsFakeClient(client) || !AreClientCookiesCached(client))
@@ -109,6 +152,7 @@ setStatsCookie(int client, bool val)
 }
 
 
+//	Get val of stats cookie for client
 bool StatsEnabledForClient(int client)
 {
   if(!AreClientCookiesCached(client)) // not loaded? dont run stats
@@ -120,9 +164,15 @@ bool StatsEnabledForClient(int client)
   return (sValue[0] != '\0' && StringToInt(sValue));
 }
 
+
+// insert game into database
+//
+//		steamid <int>: Steamid of client
+//		boss_name <char[]>: name of boss (Only thing that is garunteed to not change often)
+//		win <bool>:	true -> boss won, false -> boss lost
 void addGameToDB(int steamid, const char[] boss_name, bool win)
 {
-  char query[200];
+  char query[255];
 
   /* Create enough space to make sure our string is quoted properly  */
   int buffer_len = strlen(boss_name) * 2 + 1;
@@ -132,11 +182,23 @@ void addGameToDB(int steamid, const char[] boss_name, bool win)
   SQL_EscapeString(db, boss_name, new_boss_name, buffer_len);
 
   /* Build the query */
-  Format(query, sizeof(query), "INSERT INTO player_stats (steamid, bossname, win) VALUES (%d, '%s', %d)", steamid, new_boss_name, win);
+  Format(query, sizeof(query), "INSERT INTO %s (steamid, bossname, win) VALUES (%d, '%s', %d);", STATS_TABLE, steamid, new_boss_name, win);
   /* Execute the query */
   SQL_LockDatabase(db);
   SQL_FastQuery(db, query);
   SQL_UnlockDatabase(db);
+}
+
+
+void removeUserStats(int steamid)
+{
+	char query[255];
+
+	Format(query, sizeof(query), "DELETE FROM %s WHERE steamid=%d;", STATS_TABLE, steamid);
+
+	SQL_LockDatabase(db);
+	SQL_FastQuery(db, query);
+	SQL_UnlockDatabase(db);
 }
 
 
