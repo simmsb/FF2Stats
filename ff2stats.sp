@@ -57,8 +57,7 @@ public Plugin:myinfo = {
 new Handle:g_bossStatsCookie;
 new Handle:db;
 
-public void OnPluginStart()
-{
+public void OnPluginStart() {
   g_bossStatsCookie = RegClientCookie(STATS_COOKIE, "Enable stats for user", CookieAccess_Protected);
   InitDB(db);
   HookEvent("teamplay_round_win", OnRoundEnd);
@@ -69,9 +68,8 @@ public void OnPluginStart()
 //
 //      STATS CLEARING MENU
 //
-public Action:statsClearCmd(int client, int args)
-{
-  if(!IsValidClient(client)) {
+public Action:statsClearCmd(int client, int args) {
+  if (!IsValidClient(client)) {
     return Plugin_Handled;
   }
 
@@ -79,8 +77,7 @@ public Action:statsClearCmd(int client, int args)
   return Plugin_Handled;
 }
 
-public Action:statsClearPanel(client)
-{
+public Action:statsClearPanel(client) {
   new Handle:panel=CreatePanel();
   SetPanelTitle(panel, "Are you sure you want to clear your boss stats!");
   DrawPanelItem(panel, "Yes");
@@ -90,12 +87,9 @@ public Action:statsClearPanel(client)
   return Plugin_Handled;
 }
 
-public statsClearPanelH(Handle:menu, MenuAction:action, client, selection)
-{
-  if(IsValidClient(client) && action==MenuAction_Select)
-  {
-    if(selection==1)  //Yes
-    {
+public statsClearPanelH(Handle:menu, MenuAction:action, client, selection) {
+  if (IsValidClient(client) && action==MenuAction_Select) {
+    if (selection==1) { //Yes
       removeUserStats(GetSteamAccountID(client));
       CPrintToChat(client, "{olive}[FF2stats]{default} Cleared your boss stats!");
     }
@@ -109,10 +103,8 @@ public statsClearPanelH(Handle:menu, MenuAction:action, client, selection)
 //
 //      STATS TOGGLE MENU
 //
-public Action:statsToggleCmd(int client, int args)
-{
-  if(!IsValidClient(client))
-  {
+public Action:statsToggleCmd(int client, int args) {
+  if (!IsValidClient(client)) {
     return Plugin_Handled;
   }
 
@@ -133,14 +125,11 @@ public Action:statsTogglePanel(client)
 
 public statsTogglePanelH(Handle:menu, MenuAction:action, client, selection)
 {
-  if(IsValidClient(client) && action==MenuAction_Select)
-  {
-    if(selection==2)  //Off
-    {
+  if (IsValidClient(client) && action==MenuAction_Select) {
+    if (selection==2) { //Off
       setStatsCookie(client, false);
     }
-    else  //On
-    {
+    else { //on
       setStatsCookie(client, true);
     }
     CPrintToChat(client, "{olive}[FF2stats]{default} FF2stats are %t for you!", selection==2 ? "off" : "on");
@@ -151,13 +140,11 @@ public statsTogglePanelH(Handle:menu, MenuAction:action, client, selection)
 //
 
 
-InitDB(&Handle:DBHandle)
-{
+InitDB(&Handle:DBHandle) {
   new String:Error[255];
   DBHandle = SQL_Connect("default", true, Error, sizeof(Error));
 
-  if(DBHandle == INVALID_HANDLE)
-  {
+  if (DBHandle == INVALID_HANDLE) {
     SetFailState(Error);
   }
   new String:Query[255];
@@ -169,10 +156,8 @@ InitDB(&Handle:DBHandle)
 
 
 //  set stats cookie for client, type: bool
-setStatsCookie(int client, bool val)
-{
-  if(!IsValidClient(client) || IsFakeClient(client) || !AreClientCookiesCached(client))
-  {
+setStatsCookie(int client, bool val) {
+  if (!IsValidClient(client) || IsFakeClient(client) || !AreClientCookiesCached(client)) {
     return;
   }
   char cookieVal[8];
@@ -182,10 +167,8 @@ setStatsCookie(int client, bool val)
 
 
 //  Get val of stats cookie for client
-bool StatsEnabledForClient(int client)
-{
-  if(!AreClientCookiesCached(client)) // not loaded? dont run stats
-  {
+bool StatsEnabledForClient(int client) {
+  if (!AreClientCookiesCached(client)) {// not loaded? dont run
     return false;
   }
   decl String:sValue[8];
@@ -199,8 +182,7 @@ bool StatsEnabledForClient(int client)
 //    steamid <int>: Steamid of client
 //    boss_name <char[]>: name of boss (Only thing that is garunteed to not change often)
 //    win <bool>:  true -> boss won, false -> boss lost
-void addGameToDB(int steamid, const char[] boss_name, bool win)
-{
+void addGameToDB(int steamid, const char[] boss_name, bool win) {
   char query[255];
 
   /* Create enough space to make sure our string is quoted properly  */
@@ -219,8 +201,7 @@ void addGameToDB(int steamid, const char[] boss_name, bool win)
 }
 
 
-void removeUserStats(int steamid)
-{
+void removeUserStats(int steamid) {
   char query[255];
 
   Format(query, sizeof(query), "DELETE FROM %s WHERE steamid=%d;", STATS_TABLE, steamid);
@@ -231,29 +212,25 @@ void removeUserStats(int steamid)
 }
 
 
-public Action:OnRoundEnd(Handle:event, const String:name[], bool:dontBroadcast)
-{
-  if(!FF2_IsFF2Enabled())
-  {
+public Action:OnRoundEnd(Handle:event, const String:name[], bool:dontBroadcast) {
+  if (!FF2_IsFF2Enabled()) {
     return Plugin_Continue;
   }
   new bool:bossWin=false;
-  if((GetEventInt(event, "team")==FF2_GetBossTeam()))
-  {
+  if ((GetEventInt(event, "team") == FF2_GetBossTeam())) {
     bossWin=true; // boss won
   }
   decl String:bossName[64];
   new boss = -1;
-  for(new client; client<MaxClients; client++)
-  {
-    if(IsValidClient(client)){
+  for (new client; client<MaxClients; client++) {
+    if (IsValidClient(client)) {
       if (!StatsEnabledForClient(client)) {
         continue;
       } // dont add if not counting stats
       boss=FF2_GetBossIndex(client);
       if (!(boss==-1)) { // we have a boss
         new bossSteamID = GetSteamAccountID(client); // steamid
-        if (bossSteamID==0) {
+        if (bossSteamID == 0) {
           continue;
         } // dont break on invalid steamid
         FF2_GetBossSpecial(boss, bossName, sizeof(bossName));
@@ -266,27 +243,21 @@ public Action:OnRoundEnd(Handle:event, const String:name[], bool:dontBroadcast)
   return Plugin_Continue;
 }
 
-stock bool:IsValidClient(client, bool:replaycheck=true)
-{
-  if(client<=0 || client>MaxClients)
-  {
+stock bool:IsValidClient(client, bool:replaycheck=true) {
+  if (client<=0 || client>MaxClients) {
     return false;
   }
 
-  if(!IsClientInGame(client))
-  {
+  if (!IsClientInGame(client)) {
     return false;
   }
 
-  if(GetEntProp(client, Prop_Send, "m_bIsCoaching"))
-  {
+  if (GetEntProp(client, Prop_Send, "m_bIsCoaching")) {
     return false;
   }
 
-  if(replaycheck)
-  {
-    if(IsClientSourceTV(client) || IsClientReplay(client))
-    {
+  if (replaycheck) {
+    if (IsClientSourceTV(client) || IsClientReplay(client)) {
       return false;
     }
   }
