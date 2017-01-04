@@ -6,29 +6,29 @@ freak fortress 2 status, written by nitros
 that big TODO: list
 
 on round start:
-	do stats stuff
-	hp mod:
-		(wins / (wins + loss)) => win_percentage  <- Done in SQL
+  do stats stuff
+  hp mod:
+    (wins / (wins + loss)) => win_percentage  <- Done in SQL
 
-		new_mod = ((win_percentage^2) * sign(win_percentage)) <- Done in SM
+    new_mod = ((win_percentage^2) * sign(win_percentage)) <- Done in SM
 
-	Easy/ Med/ Hard gamemodes?
+  Easy/ Med/ Hard gamemodes?
 */
 
 // TODO: Move these func somewhere else once implemented
 int calcHpMod(float win_percentage, int base_hp) {
-	float multiplier = f_clamp(pow(win_percentage, 2.0) * F_SIGN(win_percentage), -0.5, 0.5) + 1.0;
-	return FloatRound(multiplier * base_hp);
+  float multiplier = f_clamp(pow(win_percentage, 2.0) * F_SIGN(win_percentage), -0.5, 0.5) + 1.0;
+  return FloatRound(multiplier * base_hp);
 }
 
 float f_clamp(float val, float min, float max) {
-	if (val < min) {
-		return min;
-	} else if (val > max) {
-		return max;
-	} else {
-		return val;
-	}
+  if (val < min) {
+    return min;
+  } else if (val > max) {
+    return max;
+  } else {
+    return val;
+  }
 }
 
 
@@ -47,10 +47,10 @@ float f_clamp(float val, float min, float max) {
 
 
 public Plugin:myinfo = {
-	name="Freak Fortress Stats",
-	author="Nitros",
-	description="Boss stats for freak fortress 2",
-	version=PLUGIN_VERSION,
+  name="Freak Fortress Stats",
+  author="Nitros",
+  description="Boss stats for freak fortress 2",
+  version=PLUGIN_VERSION,
   url="ben@bensimms.moe"
 };
 
@@ -59,47 +59,47 @@ new Handle:db;
 
 public void OnPluginStart()
 {
-	g_bossStatsCookie = RegClientCookie(STATS_COOKIE, "Enable stats for user", CookieAccess_Protected);
+  g_bossStatsCookie = RegClientCookie(STATS_COOKIE, "Enable stats for user", CookieAccess_Protected);
   InitDB(db);
   HookEvent("teamplay_round_win", OnRoundEnd);
   RegConsoleCmd("ff2stats", statsToggleCmd);
-	LoadTranslations("ff2stats.phrases");
+  LoadTranslations("ff2stats.phrases");
 }
 
 //
-//			STATS CLEARING MENU
+//      STATS CLEARING MENU
 //
 public Action:statsClearCmd(int client, int args)
 {
-	if(!IsValidClient(client)) {
-		return Plugin_Handled;
-	}
+  if(!IsValidClient(client)) {
+    return Plugin_Handled;
+  }
 
-	statsClearPanel(client);
-	return Plugin_Handled;
+  statsClearPanel(client);
+  return Plugin_Handled;
 }
 
 public Action:statsClearPanel(client)
 {
-	new Handle:panel=CreatePanel();
-	SetPanelTitle(panel, "Are you sure you want to clear your boss stats!");
-	DrawPanelItem(panel, "Yes");
-	DrawPanelItem(panel, "No");
-	SendPanelToClient(panel, client, statsClearPanelH, MENU_TIME_FOREVER);
-	CloseHandle(panel);
-	return Plugin_Handled;
+  new Handle:panel=CreatePanel();
+  SetPanelTitle(panel, "Are you sure you want to clear your boss stats!");
+  DrawPanelItem(panel, "Yes");
+  DrawPanelItem(panel, "No");
+  SendPanelToClient(panel, client, statsClearPanelH, MENU_TIME_FOREVER);
+  CloseHandle(panel);
+  return Plugin_Handled;
 }
 
 public statsClearPanelH(Handle:menu, MenuAction:action, client, selection)
 {
-	if(IsValidClient(client) && action==MenuAction_Select)
-	{
-		if(selection==1)  //Yes
-		{
-			removeUserStats(GetSteamAccountID(client));
-			CPrintToChat(client, "{olive}[FF2stats]{default} Cleared your boss stats!");
-		}
-	}
+  if(IsValidClient(client) && action==MenuAction_Select)
+  {
+    if(selection==1)  //Yes
+    {
+      removeUserStats(GetSteamAccountID(client));
+      CPrintToChat(client, "{olive}[FF2stats]{default} Cleared your boss stats!");
+    }
+  }
 }
 //
 //
@@ -107,44 +107,44 @@ public statsClearPanelH(Handle:menu, MenuAction:action, client, selection)
 
 
 //
-//			STATS TOGGLE MENU
+//      STATS TOGGLE MENU
 //
 public Action:statsToggleCmd(int client, int args)
 {
-	if(!IsValidClient(client))
-	{
-		return Plugin_Handled;
-	}
+  if(!IsValidClient(client))
+  {
+    return Plugin_Handled;
+  }
 
-	statsTogglePanel(client);
-	return Plugin_Handled;
+  statsTogglePanel(client);
+  return Plugin_Handled;
 }
 
 public Action:statsTogglePanel(client)
 {
-	new Handle:panel=CreatePanel();
-	SetPanelTitle(panel, "Enable or disable boss stats");
-	DrawPanelItem(panel, "On");
-	DrawPanelItem(panel, "Off");
-	SendPanelToClient(panel, client, statsTogglePanelH, MENU_TIME_FOREVER);
-	CloseHandle(panel);
-	return Plugin_Handled;
+  new Handle:panel=CreatePanel();
+  SetPanelTitle(panel, "Enable or disable boss stats");
+  DrawPanelItem(panel, "On");
+  DrawPanelItem(panel, "Off");
+  SendPanelToClient(panel, client, statsTogglePanelH, MENU_TIME_FOREVER);
+  CloseHandle(panel);
+  return Plugin_Handled;
 }
 
 public statsTogglePanelH(Handle:menu, MenuAction:action, client, selection)
 {
-	if(IsValidClient(client) && action==MenuAction_Select)
-	{
-		if(selection==2)  //Off
-		{
-			setStatsCookie(client, false);
-		}
-		else  //On
-		{
-			setStatsCookie(client, true);
-		}
-		CPrintToChat(client, "{olive}[FF2stats]{default} FF2stats are %t for you!", selection==2 ? "off" : "on");
-	}
+  if(IsValidClient(client) && action==MenuAction_Select)
+  {
+    if(selection==2)  //Off
+    {
+      setStatsCookie(client, false);
+    }
+    else  //On
+    {
+      setStatsCookie(client, true);
+    }
+    CPrintToChat(client, "{olive}[FF2stats]{default} FF2stats are %t for you!", selection==2 ? "off" : "on");
+  }
 }
 //
 //
@@ -168,7 +168,7 @@ InitDB(&Handle:DBHandle)
 }
 
 
-//	set stats cookie for client, type: bool
+//  set stats cookie for client, type: bool
 setStatsCookie(int client, bool val)
 {
   if(!IsValidClient(client) || IsFakeClient(client) || !AreClientCookiesCached(client))
@@ -181,7 +181,7 @@ setStatsCookie(int client, bool val)
 }
 
 
-//	Get val of stats cookie for client
+//  Get val of stats cookie for client
 bool StatsEnabledForClient(int client)
 {
   if(!AreClientCookiesCached(client)) // not loaded? dont run stats
@@ -196,9 +196,9 @@ bool StatsEnabledForClient(int client)
 
 // insert game into database
 //
-//		steamid <int>: Steamid of client
-//		boss_name <char[]>: name of boss (Only thing that is garunteed to not change often)
-//		win <bool>:	true -> boss won, false -> boss lost
+//    steamid <int>: Steamid of client
+//    boss_name <char[]>: name of boss (Only thing that is garunteed to not change often)
+//    win <bool>:  true -> boss won, false -> boss lost
 void addGameToDB(int steamid, const char[] boss_name, bool win)
 {
   char query[255];
@@ -221,13 +221,13 @@ void addGameToDB(int steamid, const char[] boss_name, bool win)
 
 void removeUserStats(int steamid)
 {
-	char query[255];
+  char query[255];
 
-	Format(query, sizeof(query), "DELETE FROM %s WHERE steamid=%d;", STATS_TABLE, steamid);
+  Format(query, sizeof(query), "DELETE FROM %s WHERE steamid=%d;", STATS_TABLE, steamid);
 
-	SQL_LockDatabase(db);
-	SQL_FastQuery(db, query);
-	SQL_UnlockDatabase(db);
+  SQL_LockDatabase(db);
+  SQL_FastQuery(db, query);
+  SQL_UnlockDatabase(db);
 }
 
 
@@ -246,21 +246,21 @@ public Action:OnRoundEnd(Handle:event, const String:name[], bool:dontBroadcast)
   new boss = -1;
   for(new client; client<MaxClients; client++)
   {
-		if(IsValidClient(client)){
-	    if (!StatsEnabledForClient(client)) {
-				continue;
-			} // dont add if not counting stats
-	    boss=FF2_GetBossIndex(client);
-	    if (!(boss==-1)) { // we have a boss
-	      new bossSteamID = GetSteamAccountID(client); // steamid
-	      if (bossSteamID==0) {
-					continue;
-				} // dont break on invalid steamid
-	      FF2_GetBossSpecial(boss, bossName, sizeof(bossName));
-				CPrintToChat(client, "{olive}[FF2stats]{default} FF2stats are enabled for you, a %s was counted for %s.", bossWin==true ? "win" : "loss", bossName);
-	    	addGameToDB(bossSteamID, bossName, bossWin);
-	    }
-		}
+    if(IsValidClient(client)){
+      if (!StatsEnabledForClient(client)) {
+        continue;
+      } // dont add if not counting stats
+      boss=FF2_GetBossIndex(client);
+      if (!(boss==-1)) { // we have a boss
+        new bossSteamID = GetSteamAccountID(client); // steamid
+        if (bossSteamID==0) {
+          continue;
+        } // dont break on invalid steamid
+        FF2_GetBossSpecial(boss, bossName, sizeof(bossName));
+        CPrintToChat(client, "{olive}[FF2stats]{default} FF2stats are enabled for you, a %s was counted for %s.", bossWin==true ? "win" : "loss", bossName);
+        addGameToDB(bossSteamID, bossName, bossWin);
+      }
+    }
   }
 
   return Plugin_Continue;
@@ -268,27 +268,27 @@ public Action:OnRoundEnd(Handle:event, const String:name[], bool:dontBroadcast)
 
 stock bool:IsValidClient(client, bool:replaycheck=true)
 {
-	if(client<=0 || client>MaxClients)
-	{
-		return false;
-	}
+  if(client<=0 || client>MaxClients)
+  {
+    return false;
+  }
 
-	if(!IsClientInGame(client))
-	{
-		return false;
-	}
+  if(!IsClientInGame(client))
+  {
+    return false;
+  }
 
-	if(GetEntProp(client, Prop_Send, "m_bIsCoaching"))
-	{
-		return false;
-	}
+  if(GetEntProp(client, Prop_Send, "m_bIsCoaching"))
+  {
+    return false;
+  }
 
-	if(replaycheck)
-	{
-		if(IsClientSourceTV(client) || IsClientReplay(client))
-		{
-			return false;
-		}
-	}
-	return true;
+  if(replaycheck)
+  {
+    if(IsClientSourceTV(client) || IsClientReplay(client))
+    {
+      return false;
+    }
+  }
+  return true;
 }
