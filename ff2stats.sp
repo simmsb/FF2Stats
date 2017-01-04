@@ -8,9 +8,9 @@ that big TODO: list
 on round start:
 	do stats stuff
 	hp mod:
-		(wins / (wins + loss)) => win_percentage
+		(wins / (wins + loss)) => win_percentage  <- Done in SQL
 
-		new_mod = ((win_percentage^2) * sign(win_percentage))
+		new_mod = ((win_percentage^2) * sign(win_percentage)) <- Done in SM
 
 	Easy/ Med/ Hard gamemodes?
 */
