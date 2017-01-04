@@ -2,7 +2,35 @@
 
 freak fortress 2 status, written by nitros
 
+
+that big TODO: list
+
+on round start:
+	do stats stuff
+	hp mod:
+		(wins / (wins + loss)) => win_percentage
+
+		new_mod = ((win_percentage^2) * sign(win_percentage))
+
+	Easy/ Med/ Hard gamemodes?
 */
+
+// TODO: Move these func somewhere else once implemented
+int calcHpMod(float win_percentage, int base_hp) {
+	float multiplier = f_clamp(pow(win_percentage, 2.0) * F_SIGN(win_percentage), -0.5, 0.5) + 1.0;
+	return FloatRound(multiplier * base_hp);
+}
+
+float f_clamp(float val, float min, float max) {
+	if (val < min) {
+		return min;
+	} else if (val > max) {
+		return max;
+	} else {
+		return val;
+	}
+}
+
 
 #pragma semicolon 1
 
@@ -10,14 +38,15 @@ freak fortress 2 status, written by nitros
 #include <freak_fortress_2>
 #include <clientprefs>
 
-#define PLUGIN_VERSION "0.1.0"  // it works so I give myself 0.1.0
+#define PLUGIN_VERSION "0.1.1"
 
 #define STATS_COOKIE "ff2stats_onforuser"
 #define STATS_TABLE "player_stats"
 
+#define F_SIGN(%1) ((%1)>0.0 ? 1.0 : -1.0)
 
-public Plugin:myinfo=
-{
+
+public Plugin:myinfo = {
 	name="Freak Fortress Stats",
 	author="Nitros",
 	description="Boss stats for freak fortress 2",
@@ -50,7 +79,7 @@ public Action:statsClearCmd(int client, int args)
 	return Plugin_Handled;
 }
 
-public Action:statsTogglePanel(client)
+public Action:statsClearPanel(client)
 {
 	new Handle:panel=CreatePanel();
 	SetPanelTitle(panel, "Are you sure you want to clear your boss stats!");
@@ -61,7 +90,7 @@ public Action:statsTogglePanel(client)
 	return Plugin_Handled;
 }
 
-public statsTogglePanelH(Handle:menu, MenuAction:action, client, selection)
+public statsClearPanelH(Handle:menu, MenuAction:action, client, selection)
 {
 	if(IsValidClient(client) && action==MenuAction_Select)
 	{
@@ -228,7 +257,7 @@ public Action:OnRoundEnd(Handle:event, const String:name[], bool:dontBroadcast)
 					continue;
 				} // dont break on invalid steamid
 	      FF2_GetBossSpecial(boss, bossName, sizeof(bossName));
-				CPrintToChat(client, "{olive}[FF2stats]{default} FF2stats are enabled for you, a %s was counted for %s.", bossWin==1 ? "win" : "loss", bossName);
+				CPrintToChat(client, "{olive}[FF2stats]{default} FF2stats are enabled for you, a %s was counted for %s.", bossWin==true ? "win" : "loss", bossName);
 	    	addGameToDB(bossSteamID, bossName, bossWin);
 	    }
 		}
