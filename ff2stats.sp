@@ -17,11 +17,11 @@ on round start:
 
 // TODO: Move these func somewhere else once implemented
 int calcHpMod(float win_percentage, int base_hp) {
-  float multiplier = f_clamp(pow(win_percentage, 2.0) * F_SIGN(win_percentage), -0.5, 0.5) + 1.0;
+  float multiplier = F_CLAMP(pow(win_percentage, 2.0) * F_SIGN(win_percentage), -0.5, 0.5) + 1.0;
   return FloatRound(multiplier * base_hp);
 }
 
-float f_clamp(float val, float min, float max) {
+float F_CLAMP(float val, float min, float max) {
   if (val < min) {
     return min;
   } else if (val > max) {
@@ -31,6 +31,9 @@ float f_clamp(float val, float min, float max) {
   }
 }
 
+float F_SIGN(float val){
+  return val>0.0 ? 1.0 : -1.0;
+}
 
 #pragma semicolon 1
 
@@ -43,10 +46,8 @@ float f_clamp(float val, float min, float max) {
 #define STATS_COOKIE "ff2stats_onforuser"
 #define STATS_TABLE "player_stats"
 
-#define F_SIGN(%1) ((%1)>0.0 ? 1.0 : -1.0)
 
-
-public Plugin:myinfo = {
+public Plugin myinfo = {
   name="Freak Fortress Stats",
   author="Nitros",
   description="Boss stats for freak fortress 2",
@@ -54,8 +55,10 @@ public Plugin:myinfo = {
   url="ben@bensimms.moe"
 };
 
-new Handle:g_bossStatsCookie;
-new Handle:db;
+Handle g_bossStatsCookie;
+Handle db;
+
+ConVar g_ff2statsenabled;
 
 public void OnPluginStart() {
   g_bossStatsCookie = RegClientCookie(STATS_COOKIE, "Enable stats for user", CookieAccess_Protected);
@@ -63,12 +66,14 @@ public void OnPluginStart() {
   HookEvent("teamplay_round_win", OnRoundEnd);
   RegConsoleCmd("ff2stats", statsToggleCmd);
   LoadTranslations("ff2stats.phrases");
+  g_ff2statsenabled = CreateConVar("ff2stats_enabled", "0.0", "enables or disables ff2stats globally", FCVAR_PROTECTED, true, 0.0, true, 1.0);
 }
+
 
 //
 //      STATS CLEARING MENU
 //
-public Action:statsClearCmd(int client, int args) {
+public Action statsClearCmd(int client, int args) {
   if (!IsValidClient(client)) {
     return Plugin_Handled;
   }
@@ -77,8 +82,8 @@ public Action:statsClearCmd(int client, int args) {
   return Plugin_Handled;
 }
 
-public Action:statsClearPanel(client) {
-  new Handle:panel=CreatePanel();
+public Action statsClearPanel(int client) {
+  Handle panel=CreatePanel();
   SetPanelTitle(panel, "Are you sure you want to clear your boss stats!");
   DrawPanelItem(panel, "Yes");
   DrawPanelItem(panel, "No");
@@ -87,7 +92,7 @@ public Action:statsClearPanel(client) {
   return Plugin_Handled;
 }
 
-public statsClearPanelH(Handle:menu, MenuAction:action, client, selection) {
+public statsClearPanelH(Handle menu, MenuAction action, int client, int selection) {
   if (IsValidClient(client) && action==MenuAction_Select) {
     if (selection==1) { //Yes
       removeUserStats(GetSteamAccountID(client));
@@ -103,7 +108,7 @@ public statsClearPanelH(Handle:menu, MenuAction:action, client, selection) {
 //
 //      STATS TOGGLE MENU
 //
-public Action:statsToggleCmd(int client, int args) {
+public Action statsToggleCmd(int client, int args) {
   if (!IsValidClient(client)) {
     return Plugin_Handled;
   }
@@ -112,9 +117,9 @@ public Action:statsToggleCmd(int client, int args) {
   return Plugin_Handled;
 }
 
-public Action:statsTogglePanel(client)
+public Action statsTogglePanel(int client)
 {
-  new Handle:panel=CreatePanel();
+  Handle panel = CreatePanel();
   SetPanelTitle(panel, "Enable or disable boss stats");
   DrawPanelItem(panel, "On");
   DrawPanelItem(panel, "Off");
@@ -123,7 +128,7 @@ public Action:statsTogglePanel(client)
   return Plugin_Handled;
 }
 
-public statsTogglePanelH(Handle:menu, MenuAction:action, client, selection)
+public statsTogglePanelH(Handle menu, MenuAction action, int client, int selection)
 {
   if (IsValidClient(client) && action==MenuAction_Select) {
     if (selection==2) { //Off
@@ -140,14 +145,14 @@ public statsTogglePanelH(Handle:menu, MenuAction:action, client, selection)
 //
 
 
-InitDB(&Handle:DBHandle) {
-  new String:Error[255];
+InitDB(Handle &DBHandle) {
+  char Error[255];
   DBHandle = SQL_Connect("default", true, Error, sizeof(Error));
 
   if (DBHandle == INVALID_HANDLE) {
     SetFailState(Error);
   }
-  new String:Query[255];
+  char Query[255];
   Format(Query, sizeof(Query), "CREATE TABLE IF NOT EXISTS %s (steamid INT, bossname TEXT, win INT)", STATS_TABLE);
   SQL_LockDatabase(DBHandle);
   SQL_FastQuery(DBHandle, Query);
@@ -171,7 +176,7 @@ bool StatsEnabledForClient(int client) {
   if (!AreClientCookiesCached(client)) {// not loaded? dont run
     return false;
   }
-  decl String:sValue[8];
+  char sValue[4];
   GetClientCookie(client, g_bossStatsCookie, sValue, sizeof(sValue));
   return (sValue[0] != '\0' && StringToInt(sValue));
 }
@@ -183,7 +188,7 @@ bool StatsEnabledForClient(int client) {
 //    boss_name <char[]>: name of boss (Only thing that is garunteed to not change often)
 //    win <bool>:  true -> boss won, false -> boss lost
 void addGameToDB(int steamid, const char[] boss_name, bool win) {
-  char query[255];
+  char Query[255];
 
   /* Create enough space to make sure our string is quoted properly  */
   int buffer_len = strlen(boss_name) * 2 + 1;
@@ -192,44 +197,44 @@ void addGameToDB(int steamid, const char[] boss_name, bool win) {
   /* Ask the SQL driver to make sure our string is safely quoted */
   SQL_EscapeString(db, boss_name, new_boss_name, buffer_len);
 
-  /* Build the query */
-  Format(query, sizeof(query), "INSERT INTO %s (steamid, bossname, win) VALUES (%d, '%s', %d);", STATS_TABLE, steamid, new_boss_name, win);
-  /* Execute the query */
+  /* Build the Query */
+  Format(Query, sizeof(Query), "INSERT INTO %s (steamid, bossname, win) VALUES (%d, '%s', %d);", STATS_TABLE, steamid, new_boss_name, win);
+  /* Execute the Query */
   SQL_LockDatabase(db);
-  SQL_FastQuery(db, query);
+  SQL_FastQuery(db, Query);
   SQL_UnlockDatabase(db);
 }
 
 
-void removeUserStats(int steamid) {
-  char query[255];
+removeUserStats(int steamid) {
+  char Query[255];
 
-  Format(query, sizeof(query), "DELETE FROM %s WHERE steamid=%d;", STATS_TABLE, steamid);
+  Format(Query, sizeof(Query), "DELETE FROM %s WHERE steamid=%d;", STATS_TABLE, steamid);
 
   SQL_LockDatabase(db);
-  SQL_FastQuery(db, query);
+  SQL_FastQuery(db, Query);
   SQL_UnlockDatabase(db);
 }
 
 
-public Action:OnRoundEnd(Handle:event, const String:name[], bool:dontBroadcast) {
-  if (!FF2_IsFF2Enabled()) {
+public Action OnRoundEnd(Handle event, char[] name, bool dontBroadcast) {
+  if (!FF2_IsFF2Enabled() || !g_ff2statsenabled.IntValue) {
     return Plugin_Continue;
   }
-  new bool:bossWin=false;
+  bool bossWin = false;
   if ((GetEventInt(event, "team") == FF2_GetBossTeam())) {
     bossWin=true; // boss won
   }
-  decl String:bossName[64];
-  new boss = -1;
-  for (new client; client<MaxClients; client++) {
+  char bossName[255];
+  int boss = -1;
+  for (int client; client<MaxClients; client++) {
     if (IsValidClient(client)) {
       if (!StatsEnabledForClient(client)) {
         continue;
       } // dont add if not counting stats
-      boss=FF2_GetBossIndex(client);
+      boss = FF2_GetBossIndex(client);
       if (!(boss==-1)) { // we have a boss
-        new bossSteamID = GetSteamAccountID(client); // steamid
+        int bossSteamID = GetSteamAccountID(client); // steamid
         if (bossSteamID == 0) {
           continue;
         } // dont break on invalid steamid
@@ -243,7 +248,7 @@ public Action:OnRoundEnd(Handle:event, const String:name[], bool:dontBroadcast) 
   return Plugin_Continue;
 }
 
-stock bool:IsValidClient(client, bool:replaycheck=true) {
+stock bool IsValidClient(int client, bool replaycheck=true) {
   if (client<=0 || client>MaxClients) {
     return false;
   }
