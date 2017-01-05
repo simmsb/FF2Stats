@@ -41,6 +41,7 @@ public void OnPluginStart() {
   HookEvent("teamplay_round_start", OnRoundStart);
   HookEvent("teamplay_round_win", OnRoundEnd);
   RegConsoleCmd("ff2stats", statsToggleCmd);
+  RegConsoleCmd("ff2clearstats", statsClearCmd);
   LoadTranslations("ff2stats.phrases");
   g_ff2statsenabled = CreateConVar("ff2stats_enabled", "1.0", "enables or disables ff2stats globally", FCVAR_PROTECTED, true, 0.0, true, 1.0);
 }
@@ -105,11 +106,15 @@ public Action OnRoundEnd(Handle event, char[] name, bool dontBroadcast) {
 //  Calculate hp modifier
 //
 //
-//    win_percentage <float>: win percentage (win/ total)
+//    win <int>: win count for player
+//    loss <int>: loss count for player
 //    base_hp <int>: base hp to calculate off
-int calcHpMod(float win_percentage, int base_hp) {
-  float multiplier = F_CLAMP(Pow(win_percentage-0.5, 2.0) * (-F_SIGN(win_percentage-0.5)), -0.5, 0.5) + 1.0;
-  PrintToChatAll("multiplier was: %f", multiplier);
+int calcHpMod(int win, int loss, int base_hp) {
+  float winPercentage = ((win+loss) > 0? float(win)/float(loss) : 0.5) - 0.5;
+  float modifier = float(win-loss)/40;
+
+  float multiplier = F_CLAMP(Pow(winPercentage, 2.0) * (-F_SIGN(winPercentage) * modifier), -0.5, 0.5) + 1.0;
+  PrintToChatAll("multiplier was: %f, winp: %f, mod: %f", multiplier, winPercentage, modifier);
   return RoundFloat(multiplier * base_hp);
 }
 
@@ -327,11 +332,9 @@ public Action setBossHealthTimer(Handle timer, Handle pack) {
   FF2_GetBossSpecial(boss, bossName, sizeof(bossName));
 
   int win, loss;
-  float ratio;
   getPlayerWinsAsBoss(bossSteamID, bossName, win, loss);
-  ratio = (win+loss) > 0? float(win)/float(loss) : 0.5;  // use 0.5 if 0 total
   int bossHp = FF2_GetBossMaxHealth(boss);
-  int newHp = calcHpMod(ratio, bossHp);
+  int newHp = calcHpMod(win, loss, bossHp);
 
   CPrintToChatAll("{olive}[FF2stats]{default} %N has FF2stats enabled and was given a health modifier of %d! (%d win: %d loss)", client, newHp-bossHp, win, loss);
   PrintToChatAll("Base hp: %d, new hp: %d, lives: %d", bossHp, newHp, FF2_GetBossLives(boss));
