@@ -116,7 +116,7 @@ int CalcHpMod(int win, int loss, int baseHp) {
   float modifier = float(win-loss)/40;
 
   float multiplier = F_CLAMP(Pow(winPercentage, 2.0) * (-F_SIGN(winPercentage) * modifier), -0.5, 0.5) + 1.0;
-  PrintToChatAll("multiplier was: %f, winp: %f, mod: %f", multiplier, winPercentage, modifier);
+  // DEBUG: PrintToChatAll("multiplier was: %f, winp: %f, mod: %f", multiplier, winPercentage, modifier);
   return RoundFloat(multiplier * baseHp);
 }
 
@@ -448,7 +448,7 @@ public Action SetBossHealthTimer(Handle timer, Handle pack) {
   int newHp = CalcHpMod(win, loss, bossHp);
 
   CPrintToChatAll("{olive}[FF2stats]{default} %N has FF2stats enabled and was given a health modifier of %d! (%d win: %d loss)", client, newHp-bossHp, win, loss);
-  PrintToChatAll("Base hp: %d, new hp: %d, lives: %d", bossHp, newHp, FF2_GetBossLives(boss));
+  // DEBUG: PrintToChatAll("Base hp: %d, new hp: %d, lives: %d", bossHp, newHp, FF2_GetBossLives(boss));
   FF2_SetBossMaxHealth(boss, newHp);
   FF2_SetBossHealth(boss, newHp*FF2_GetBossLives(boss)); // also set boss health, because it likes to break it somewhere else
   return Plugin_Continue;
