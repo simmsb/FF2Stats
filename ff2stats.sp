@@ -112,8 +112,8 @@ public Action OnRoundEnd(Handle event, char[] name, bool dontBroadcast) {
 //    loss <int>: loss count for player
 //    baseHp <int>: base hp to calculate off
 int CalcHpMod(int win, int loss, int baseHp) {
-  float winPercentage = ((win+loss) > 0? float(win)/float(loss) : 0.5) - 0.5;
-  float modifier = float(win-loss)/40;
+  float winPercentage = ((win+loss) > 0? float(win)/float(win+loss) : 0.5) - 0.5;
+  float modifier = FloatAbs(float(win-loss)/40.0);
 
   float multiplier = F_CLAMP(Pow(winPercentage, 2.0) * (-F_SIGN(winPercentage) * modifier), -0.5, 0.5) + 1.0;
   // DEBUG: PrintToChatAll("multiplier was: %f, winp: %f, mod: %f", multiplier, winPercentage, modifier);
@@ -132,7 +132,7 @@ float F_CLAMP(float val, float min, float max) {
 }
 
 
-float F_SIGN(float val){
+float F_SIGN(float val) {
   return val>0.0 ? 1.0 : -1.0;
 }
 
