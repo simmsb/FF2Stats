@@ -1,6 +1,6 @@
 # FF2Stats
 
-FF2Stats is a plugin for Freak Fortress 2 that adds stats to bosses.
+FF2Stats is a plugin for Freak Fortress 2 that adds stats to bosses in FF2.
 
 Requirements: default sql database is setup and srcds has permissions to create tables.
 
