@@ -44,6 +44,7 @@ public void OnPluginStart() {
   HookEvent("teamplay_round_win", OnRoundEnd);
   RegConsoleCmd("ff2stats", StatsToggleCmd, "Toggle boss stats for yourself");
   RegConsoleCmd("ff2clearstats", FF2StatsClearSpecific, "Clear stats for a specific boss");
+  RegConsoleCmd("ff2clearstats_all", FF2StatsClearAll, "Clear stats for all your bosses");
   LoadTranslations("ff2stats.phrases");
   g_ff2statsenabled = CreateConVar("ff2stats_enabled", "1.0", "enables or disables ff2stats globally", FCVAR_PROTECTED, true, 0.0, true, 1.0);
 }
@@ -113,7 +114,7 @@ public Action OnRoundEnd(Handle event, char[] name, bool dontBroadcast) {
 public Action Timer_CommandNotificationLoop(Handle timer) {
     static int print_loop = 0;
 
-    if (print_loop > 1) {
+    if (print_loop > 2) {
         print_loop = 0;
     }
 
@@ -121,6 +122,8 @@ public Action Timer_CommandNotificationLoop(Handle timer) {
         CPrintToChatAll("{olive}[FF2stats]{default} Use the command !ff2stats to toggle boss stats for yourself.");
     } else if (print_loop == 1) {
         CPrintToChatAll("{olive}[FF2stats]{default} Use the command !ff2clearstats to clear your boss stats.");
+    } else if (print_loop == 2) {
+        CPrintToChatAll("{olive}[FF2stats]{default} Use the command !ff2clearstats_all to clear all your boss stats.");
     }
 
     print_loop++;
@@ -262,6 +265,43 @@ public FF2StatsClearSpecificConfirmH(Handle menu, MenuAction action, int client,
 //
 //
 
+
+//
+//
+// All boss clearing
+public Action FF2StatsClearAll(int client, int args) {
+  if (!FF2_IsFF2Enabled() || !IsValidClient(client))
+    return Plugin_Continue;
+
+  // display confirm menu
+  Menu statsSelectMenu = new Menu(FF2StatsClearAllConfirmH);
+  statsSelectMenu.SetTitle("Confirm deleting all stats");
+
+  statsSelectMenu.AddItem("Yes", "Yes");
+  statsSelectMenu.AddItem("No", "No");
+  statsSelectMenu.Display(client, 20);
+  return Plugin_Handled;
+}
+
+public FF2StatsClearAllConfirmH(Handle menu, MenuAction action, int client, int selection) {
+    switch (action) {
+        case MenuAction_End: {
+            delete menu;
+        }
+        case MenuAction_Select: {
+            if (selection==0) { // Yes
+                RemoveAllUserStats(GetSteamAccountID(client));
+                CPrintToChat(client, "{olive}[FF2stats]{default} Your boss stats for ALL bosses have been reset!");
+            } else {
+                CPrintToChat(client, "{olive}[FF2stats]{default} Your boss stats have NOT been cleared!");
+            }
+        }
+    }
+}
+
+//
+//
+//
 
 //
 //      STATS TOGGLE MENU
