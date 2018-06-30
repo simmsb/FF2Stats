@@ -95,7 +95,7 @@ public Action OnRoundEnd(Handle event, char[] name, bool dontBroadcast) {
         continue;
       } // dont add if not counting stats
       boss = FF2_GetBossIndex(client);
-      if (!(boss==-1)) { // we have a boss
+      if (boss != -1) { // we have a boss
         int bossSteamID = GetSteamAccountID(client); // steamid
         if (bossSteamID == 0) {
           continue;
@@ -108,6 +108,31 @@ public Action OnRoundEnd(Handle event, char[] name, bool dontBroadcast) {
   }
 
   return Plugin_Continue;
+}
+
+
+// If a boss leaves mid-game, count as a loss
+public OnClientDisconnect(int client) {
+  if (!FF2_IsFF2Enabled() || !g_ff2statsenabled.IntValue) {
+    return;
+  }
+
+  if (!StatsEnabledForClient(client)) {
+      return;
+  }
+
+  char bossName[255];
+  int boss = FF2_GetBossIndex(client);
+  if (boss != -1) {
+      int boss_steamid = GetSteamAccountID(client);
+      if (boss_steamid == 0) {
+          return;
+      }
+
+      FF2_GetBossSpecial(boss, bossName, sizeof(bossName));
+      CPrintToChatAll("{olive}[FF2stats]{default} A boss left the game while it was their turn and a loss was counted.");
+      AddGameToDB(boss_steamid, bossName, false);
+  }
 }
 
 
@@ -512,7 +537,7 @@ public Action SetBossHealthTimer(Handle timer, Handle pack) {
   int bossHp = FF2_GetBossMaxHealth(boss);
   int newHp = CalcHpMod(win, loss, bossHp);
 
-  CPrintToChatAll("{olive}[FF2stats]{default} %N has FF2stats enabled and was given a health modifier of %d! (%d win: %d loss)", client, newHp-bossHp, win, loss);
+  CPrintToChatAll("{olive}[FF2stats]{default} %N has FF2stats enabled and was given a health modifier of %d (old hp: %d, new_hp: %d)! (%d wins, %d losses)", client, newHp-bossHp, bossHp, newHp, win, loss);
   // DEBUG: PrintToChatAll("Base hp: %d, new hp: %d, lives: %d", bossHp, newHp, FF2_GetBossLives(boss));
   FF2_SetBossMaxHealth(boss, newHp);
   FF2_SetBossHealth(boss, newHp*FF2_GetBossLives(boss)); // also set boss health, because it likes to break it somewhere else
