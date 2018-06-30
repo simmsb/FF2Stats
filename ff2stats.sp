@@ -49,12 +49,15 @@ public void OnPluginStart() {
 }
 
 
+public OnMapStart() {
+  CreateTimer(15.0, Timer_CommandNotificationLoop, _, TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
+}
+
+
 public Action OnRoundStart(Handle event, char[] name, bool dontBroadcast) {
   if (!FF2_IsFF2Enabled() || !g_ff2statsenabled.IntValue)  {
     return Plugin_Continue;
   }
-
-  CreateTimer(15.0, Timer_CommandNotificationLoop, _, TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
 
   int boss = -1;
   for (int client; client<MaxClients; client++) {
