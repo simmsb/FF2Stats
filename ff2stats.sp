@@ -50,7 +50,7 @@ public void OnPluginStart() {
 
 
 public OnMapStart() {
-  CreateTimer(15.0, Timer_CommandNotificationLoop, _, TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
+  CreateTimer(45.0, Timer_CommandNotificationLoop, _, TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
 }
 
 
