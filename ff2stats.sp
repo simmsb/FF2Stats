@@ -54,6 +54,8 @@ public Action OnRoundStart(Handle event, char[] name, bool dontBroadcast) {
     return Plugin_Continue;
   }
 
+  CreateTimer(15.0, Timer_CommandNotificationLoop, _, TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
+
   int boss = -1;
   for (int client; client<MaxClients; client++) {
     if (IsValidClient(client)) {
@@ -103,6 +105,26 @@ public Action OnRoundEnd(Handle event, char[] name, bool dontBroadcast) {
 
   return Plugin_Continue;
 }
+
+
+public Action Timer_CommandNotificationLoop(Handle timer) {
+    static int print_loop = 0;
+
+    if (print_loop > 1) {
+        print_loop = 0;
+    }
+
+    if (print_loop == 0) {
+        CPrintToChatAll("{olive}[FF2stats]{default} Use the command !ff2stats to toggle boss stats for yourself.");
+    } else if (print_loop == 1) {
+        CPrintToChatAll("{olive}[FF2stats]{default} Use the command !ff2clearstats to clear your boss stats.");
+    }
+
+    print_loop++;
+
+    return Plugin_Continue;
+}
+
 
 
 //  Calculate hp modifier
