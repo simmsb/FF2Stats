@@ -18,6 +18,7 @@ Easy/ Med/ Hard gamemodes?
 
 #define STATS_COOKIE "ff2stats_onforuser"
 #define STATS_TABLE "player_stats"
+#define FF2STATS_MINPLAYERS 8
 
 
 public Plugin myinfo = {
@@ -56,10 +57,10 @@ public OnMapStart() {
 }
 
 
-int count_alive_players() {
+int count_players() {
     int count = 0;
     for(int client; client <= MaxClients; client++) {
-        if (IsClientInGame(client) && IsPlayerAlive(client)) {
+        if (IsClientInGame(client) && !IsFakeClient(client)) {
             count++;
         }
     }
@@ -67,13 +68,22 @@ int count_alive_players() {
 }
 
 
+bool ff2stats_enough_players() {
+    return count_players() >= FF2STATS_MINPLAYERS;
+}
+
+
 bool FF2Stats_IsEnabled() {
-    return (FF2_IsFF2Enabled() && g_ff2statsenabled.IntValue && (count_alive_players() >= 8));
+    return FF2_IsFF2Enabled() && g_ff2statsenabled.IntValue && ff2stats_enough_players();
 }
 
 
 public Action OnRoundStart(Handle event, char[] name, bool dontBroadcast) {
     if (!FF2Stats_IsEnabled())  {
+        if (!ff2stats_enough_players()) {
+            CPrintToChatAll("{olive}[FF2stats]{default} Less than %d players, stats are disabled for this round.", FF2STATS_MINPLAYERS);
+        }
+
         return Plugin_Continue;
     }
 
