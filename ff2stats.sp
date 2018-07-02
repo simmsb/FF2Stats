@@ -14,9 +14,9 @@ Easy/ Med/ Hard gamemodes?
 #include <freak_fortress_2>
 #include <clientprefs>
 
-#define PLUGIN_VERSION "0.2.0"
+#define PLUGIN_VERSION "0.2.1"
 
-#define STATS_COOKIE "ff2stats_onforuser"
+#define STATS_COOKIE "ff2stats_enabledforuser"
 #define STATS_TABLE "player_stats"
 #define FF2STATS_MINPLAYERS 8
 
@@ -47,6 +47,7 @@ public void OnPluginStart() {
     RegConsoleCmd("ff2stats", StatsToggleCmd, "Toggle boss stats for yourself");
     RegConsoleCmd("ff2clearstats", FF2StatsClearSpecific, "Clear stats for a specific boss");
     RegConsoleCmd("ff2clearstats_all", FF2StatsClearAll, "Clear stats for all your bosses");
+    RegConsoleCmd("ff2stats_debug", FF2StatsDebug, "ff2stats debugstuff");
     LoadTranslations("ff2stats.phrases");
     g_ff2statsenabled = CreateConVar("ff2stats_enabled", "1.0", "enables or disables ff2stats globally", FCVAR_PROTECTED, true, 0.0, true, 1.0);
 }
@@ -67,16 +68,14 @@ int count_players() {
     return count;
 }
 
-
 bool ff2stats_enough_players() {
-    return count_players() >= FF2STATS_MINPLAYERS;
+    return (count_players() >= FF2STATS_MINPLAYERS);
 }
 
 
 bool FF2Stats_IsEnabled() {
-    return FF2_IsFF2Enabled() && g_ff2statsenabled.IntValue && ff2stats_enough_players();
+    return (FF2_IsFF2Enabled() && GetConVarBool(g_ff2statsenabled) && ff2stats_enough_players());
 }
-
 
 public Action OnRoundStart(Handle event, char[] name, bool dontBroadcast) {
     if (!FF2Stats_IsEnabled())  {
@@ -132,7 +131,7 @@ public Action OnRoundEnd(Handle event, char[] name, bool dontBroadcast) {
             } // dont break on invalid steamid
 
             FF2_GetBossSpecial(boss, bossName, sizeof(bossName));
-            CPrintToChat(client, "{olive}[FF2stats]{default} FF2stats are enabled for you, a %s was counted for %s.", bossWin==true ? "win" : "loss", bossName);
+            CPrintToChatAll("{olive}[FF2stats]{default} FF2stats was enabled for %N, and a %s was counted for %s.", client, bossWin ? "win" : "loss", bossName);
             AddGameToDB(bossSteamID, bossName, bossWin);
         }
     }
@@ -237,6 +236,27 @@ float F_CLAMP(float val, float min, float max) {
 // float F_SIGN(float val) {
 //     return val>0.0 ? 1.0 : -1.0;
 // }
+
+
+public Action FF2StatsDebug(int client, int args) {
+    int num_players = count_players();
+    int enough_players = ff2stats_enough_players();
+    bool enabled = FF2Stats_IsEnabled();
+    PrintToChat(client, "ff2stats debug: num players: %d, enough_players: %d, enabled: %d", num_players, enough_players, enabled);
+
+    for (int iclient; iclient <= MaxClients; iclient++) {
+        if (!IsValidClient(iclient)) {
+            continue;
+        }
+
+        int boss = FF2_GetBossIndex(iclient);
+        int steamid = GetSteamAccountID(iclient);
+        bool statsenabled = StatsEnabledForClient(iclient);
+
+        PrintToChat(client, "Client: %d %L, boss: %d, steamid: %d, stats: %d", iclient, iclient, boss, steamid, statsenabled);
+    }
+    return Plugin_Handled;
+}
 
 
 //
@@ -426,7 +446,7 @@ SetStatsCookie(int client, bool val) {
 
 //  Get val of stats cookie for client
 bool StatsEnabledForClient(int client) {
-    if (!AreClientCookiesCached(client)) {// not loaded? dont run
+    if (!AreClientCookiesCached(client)) { // not loaded? dont run
         return false;
     }
     char sValue[4];
@@ -478,6 +498,7 @@ void GetPlayerWinsAsBoss(int steamID, const char[] bossName, int &win, int &loss
     if ((hQuery = SQL_Query(db, Query)) == null) {
         win = 0;  // if it errors, return 1:1 ratio
         loss = 0;
+        return;
     }
 
     SQL_FetchRow(hQuery);
@@ -506,6 +527,7 @@ void GetTotalBossWins(const char[] bossName, int &win, int &loss) {
     if ((hQuery = SQL_Query(db, Query)) == null) {
         win = 0;  // if it errors, return 1:1 ratio
         loss = 0;
+        return;
     }
 
     SQL_FetchRow(hQuery);
