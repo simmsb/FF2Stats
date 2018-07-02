@@ -38,7 +38,7 @@ ConVar g_ff2statsenabled;
 
 
 public void OnPluginStart() {
-    g_bossStatsCookie = RegClientCookie(STATS_COOKIE, "Enable stats for user", CookieAccess_Protected);
+    g_bossStatsCookie = RegClientCookie(STATS_COOKIE, "Enable stats for user", CookieAccess_Public);
     InitDB(db);
     HookEvent("teamplay_round_start", OnRoundStart);
     HookEvent("teamplay_round_win", OnRoundEnd);
@@ -56,34 +56,37 @@ public OnMapStart() {
 }
 
 
+int count_alive_players() {
+    int count = 0;
+    for(int client; client <= MaxClients; client++) {
+        if (IsClientInGame(client) && IsPlayerAlive(client)) {
+            count++;
+        }
+    }
+    return count;
+}
+
+
+bool FF2Stats_IsEnabled() {
+    return (FF2_IsFF2Enabled() && g_ff2statsenabled.IntValue && (count_alive_players() >= 8));
+}
+
+
 public Action OnRoundStart(Handle event, char[] name, bool dontBroadcast) {
-    if (!FF2_IsFF2Enabled() || !g_ff2statsenabled.IntValue)  {
+    if (!FF2Stats_IsEnabled())  {
         return Plugin_Continue;
     }
 
-    for (int client; client<MaxClients; client++) {
-        if (IsValidClient(client)) {
-            if (!StatsEnabledForClient(client)) {
-                continue;
-            } // dont add if not counting stats
-            int boss = FF2_GetBossIndex(client);
-            if (boss != -1) { // we have a boss
-                DataPack pack;
-                CreateDataTimer(1.2, SetBossHealthTimer, pack, TIMER_FLAG_NO_MAPCHANGE); //idk
-                pack.WriteCell(boss);
-                pack.WriteCell(client);
-            }
-        }
-    }
+    CreateTimer(1.2, SetBossHealthTimer, _, TIMER_FLAG_NO_MAPCHANGE); //idk
     return Plugin_Continue;
 }
 
 
 public Action OnRoundStalemate(Handle event, char[] name, bool dontBroadcast) {
-    if (!FF2_IsFF2Enabled() || !g_ff2statsenabled.IntValue) {
+    if (!FF2Stats_IsEnabled())  {
         return Plugin_Continue;
     }
-    for (int client; client<MaxClients; client++) {
+    for (int client; client <= MaxClients; client++) {
         if (!IsValidClient(client) || !StatsEnabledForClient(client)) {
             continue;
         }
@@ -98,7 +101,7 @@ public Action OnRoundStalemate(Handle event, char[] name, bool dontBroadcast) {
 
 
 public Action OnRoundEnd(Handle event, char[] name, bool dontBroadcast) {
-    if (!FF2_IsFF2Enabled() || !g_ff2statsenabled.IntValue) {
+    if (!FF2Stats_IsEnabled())  {
         return Plugin_Continue;
     }
     bool bossWin = false;
@@ -106,7 +109,7 @@ public Action OnRoundEnd(Handle event, char[] name, bool dontBroadcast) {
         bossWin=true; // boss won
     }
     char bossName[255];
-    for (int client; client<MaxClients; client++) {
+    for (int client; client <= MaxClients; client++) {
         if (!IsValidClient(client) || !StatsEnabledForClient(client)) {
             continue;
         } // dont add if not counting stats
@@ -130,7 +133,7 @@ public Action OnRoundEnd(Handle event, char[] name, bool dontBroadcast) {
 
 // If a boss leaves mid-game, count as a loss
 public OnClientDisconnect(int client) {
-    if (!FF2_IsFF2Enabled() || !g_ff2statsenabled.IntValue) {
+    if (!FF2Stats_IsEnabled())  {
         return;
     }
 
@@ -351,7 +354,13 @@ public Action StatsToggleCmd(int client, int args) {
 
 public Action StatsTogglePanel(int client) {
     Menu statsTogglePanel = new Menu(StatsTogglePanelH);
-    statsTogglePanel.SetTitle("Enable or disable boss stats");
+    char message[255];
+
+    bool current_state = StatsEnabledForClient(client);
+
+    Format(message, sizeof(message), "Enable or disable boss stats (Currently %s)", current_state ? "On" : "Off");
+
+    statsTogglePanel.SetTitle(message);
     statsTogglePanel.AddItem("On", "On");
     statsTogglePanel.AddItem("Off", "Off");
     statsTogglePanel.Display(client, 20);
@@ -370,7 +379,7 @@ public StatsTogglePanelH(Handle menu, MenuAction action, int client, int selecti
             } else { // off
                 SetStatsCookie(client, false);
             }
-            CPrintToChat(client, "{olive}[FF2stats]{default} FF2stats are %t for you!", selection == 0 ? "off" : "on");
+            CPrintToChat(client, "{olive}[FF2stats]{default} FF2stats are now %t for you!", selection == 0 ? "off" : "on");
         }
     }
 }
@@ -525,19 +534,12 @@ RemoveUserStatsBossSpecific(int steamID, char[] bossName) {
 }
 
 
-//    Timer to hande the boss health mod after boss generation (pray this doesn't grab the last boss's hp or some garbage)
-public Action SetBossHealthTimer(Handle timer, Handle pack) {
-    int boss;
-    int client;
-
-    ResetPack(pack);
-    boss = ReadPackCell(pack);
-    client = ReadPackCell(pack);
-
+void apply_hp_mod(int client, int boss) {
     int bossSteamID = GetSteamAccountID(client); // steamid
     if (bossSteamID == 0) {  // dont break on invalid steamid
-        return Plugin_Continue;
+        return;
     }
+
     char bossName[255];
     FF2_GetBossSpecial(boss, bossName, sizeof(bossName));
 
@@ -550,7 +552,23 @@ public Action SetBossHealthTimer(Handle timer, Handle pack) {
     // DEBUG: PrintToChatAll("Base hp: %d, new hp: %d, lives: %d", bossHp, newHp, FF2_GetBossLives(boss));
     FF2_SetBossMaxHealth(boss, newHp);
     FF2_SetBossHealth(boss, newHp*FF2_GetBossLives(boss)); // also set boss health, because it likes to break it somewhere else
-    return Plugin_Continue;
+}
+
+
+//    Timer to hande the boss health mod after boss generation (pray this doesn't grab the last boss's hp or some garbage)
+public Action SetBossHealthTimer(Handle timer) {
+    for (int client; client <= MaxClients; client++) {
+        if (!IsValidClient(client) || !StatsEnabledForClient(client)) {
+            continue;
+        }
+
+        int boss = FF2_GetBossIndex(client);
+        if (boss == -1) {
+            continue;
+        }
+
+        apply_hp_mod(client, boss);
+    }
 }
 
 
