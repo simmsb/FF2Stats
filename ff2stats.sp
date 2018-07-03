@@ -60,7 +60,7 @@ public OnMapStart() {
 
 int count_players() {
     int count = 0;
-    for(int client; client <= MaxClients; client++) {
+    for(int client = 1; client <= MaxClients; client++) {
         if (IsClientInGame(client) && !IsFakeClient(client)) {
             count++;
         }
@@ -95,7 +95,7 @@ public Action OnRoundStalemate(Handle event, char[] name, bool dontBroadcast) {
     if (!FF2Stats_IsEnabled())  {
         return Plugin_Continue;
     }
-    for (int client; client <= MaxClients; client++) {
+    for (int client = 1; client <= MaxClients; client++) {
         if (!IsValidClient(client) || !StatsEnabledForClient(client)) {
             continue;
         }
@@ -118,7 +118,7 @@ public Action OnRoundEnd(Handle event, char[] name, bool dontBroadcast) {
         bossWin=true; // boss won
     }
     char bossName[255];
-    for (int client; client <= MaxClients; client++) {
+    for (int client = 1; client <= MaxClients; client++) {
         if (!IsValidClient(client) || !StatsEnabledForClient(client)) {
             continue;
         } // dont add if not counting stats
@@ -244,7 +244,7 @@ public Action FF2StatsDebug(int client, int args) {
     bool enabled = FF2Stats_IsEnabled();
     PrintToChat(client, "ff2stats debug: num players: %d, enough_players: %d, enabled: %d", num_players, enough_players, enabled);
 
-    for (int iclient; iclient <= MaxClients; iclient++) {
+    for (int iclient = 1; iclient <= MaxClients; iclient++) {
         if (!IsValidClient(iclient)) {
             continue;
         }
