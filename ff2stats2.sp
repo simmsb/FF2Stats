@@ -11,8 +11,8 @@
 
 #define PLUGIN_VERSION
 
-#define BOSS_RESULTS_TABLE "ff2stats_bossresults"
-#define PLAYER_STATS_TABLE "ff2stats_playerstats"
+#define BOSS_RESULTS_TABLE "ff2stats2_bossresults"
+#define PLAYER_STATS_TABLE "ff2stats2_playerstats"
 
 public Plugin myinfo = {
     name="Freak Fortress Stats",
@@ -28,6 +28,7 @@ enum struct PlayerInfo {
     int kills;
     bool stats_enabled;
     int difficulty;
+    bool mod_applied;
 
     void joined(int client) {
         this.active = true;
@@ -35,6 +36,7 @@ enum struct PlayerInfo {
         this.kills = 0;
         this.stats_enabled = false;
         this.difficulty = 0;
+        this.mod_applied = false;
     }
 
     void left() {
@@ -45,10 +47,13 @@ enum struct PlayerInfo {
         this.kills = 0;
         this.stats_enabled = false;
         this.difficulty = 0;
+        this.mod_applied = false;
     }
 }
 
 PlayerInfo players[MAXPLAYERS+1];
+
+bool round_end_counted = false;
 
 Database db_conn = null;
 Cookie pref_cookie = null;
@@ -78,12 +83,13 @@ void reset_players() {
 
 public void OnPluginStart() {
     Database.Connect(start_db_cb);
-    pref_cookie = new Cookie("ff2stats_enabled", "Enable counting personal boss stats for user.", CookieAccess_Public);
-    is_enabled = CreateConVar("ff2stats_enabled", "1.0", "Enable or disable ff2stats globally", FCVAR_PROTECTED, true, 0.0, true, 1.0);
-    min_rounds = CreateConVar("ff2stats_minrounds", "10.0", "Minimum rounds before a hp mod is applied", FCVAR_PROTECTED, true, 0.0, false, _);
-    max_hp_mod_pct = CreateConVar("ff2stats_max_hp_mod_pct", "0.3", "Maximum hp mod as a fraction", FCVAR_PROTECTED, true, 0.0, false, _);
-    min_players = CreateConVar("ff2stats_min_players", "8.0", "Minimum players needed for ff2stats to track stats", FCVAR_PROTECTED, true, 0.0, false, _);
-    map_mod_scale = CreateConVar("ff2stats_map_mod_scale", "0.1", "How much to scale the map hp mod by", FCVAR_PROTECTED, true, 0.0, false, _);
+    pref_cookie = new Cookie("ff2stats2_enabled", "Enable counting personal boss stats for user.", CookieAccess_Public);
+
+    is_enabled = CreateConVar("ff2stats2_enabled", "1.0", "Enable or disable ff2stats globally", FCVAR_PROTECTED, true, 0.0, true, 1.0);
+    min_rounds = CreateConVar("ff2stats2_minrounds", "10.0", "Minimum rounds before a hp mod is applied", FCVAR_PROTECTED, true, 0.0, false, _);
+    max_hp_mod_pct = CreateConVar("ff2stats2_max_hp_mod_pct", "0.3", "Maximum hp mod as a fraction", FCVAR_PROTECTED, true, 0.0, false, _);
+    min_players = CreateConVar("ff2stats2_min_players", "6.0", "Minimum players needed for ff2stats to track stats", FCVAR_PROTECTED, true, 0.0, false, _);
+    map_mod_scale = CreateConVar("ff2stats2_map_mod_scale", "0.1", "How much to scale the map hp mod by", FCVAR_PROTECTED, true, 0.0, false, _);
 
     HookEvent("teamplay_round_start", on_round_start);
     HookEvent("teamplay_round_win", on_round_win);
@@ -150,9 +156,9 @@ public void start_db_cb(Database db, const char[] error, any data) {
     db_conn = db;
 
     ArrayStack queries = new ArrayStack(255 * 5);
-    queries.PushString("CREATE TABLE IF NOT EXISTS ff2stats_mapbossresults (bossname TEXT, map TEXT, win INT, INDEX (bossname(20), map(20)))");
-    queries.PushString("CREATE TABLE IF NOT EXISTS ff2stats_personalbossresults (steamid INT, bossname TEXT, kills INT, win INT, points INT, INDEX (steamid, bossname(20)))");
-    queries.PushString("CREATE TABLE IF NOT EXISTS ff2stats_playerstats (steamid INT, class INT, damage_done INT, map TEXT, round_time INT, INDEX (steamid))");
+    queries.PushString("CREATE TABLE IF NOT EXISTS ff2stats2_mapbossresults (bossname TEXT, map TEXT, win INT, INDEX (bossname(20), map(20)))");
+    queries.PushString("CREATE TABLE IF NOT EXISTS ff2stats2_personalbossresults (steamid INT, bossname TEXT, kills INT, win INT, points INT, INDEX (steamid, bossname(20)))");
+    queries.PushString("CREATE TABLE IF NOT EXISTS ff2stats2_playerstats (steamid INT, class INT, damage_done INT, map TEXT, round_time INT, INDEX (steamid, class, map(20)))");
 
     run_all_queries(queries);
 }
@@ -166,7 +172,7 @@ void run_all_queries(ArrayStack queries) {
 }
 
 public void db_query_chain_cb(Database db, DBResultSet results, const char[] error, any data) {
-    if (db == null || results == null || error[0] == '\0') {
+    if (db == null || results == null) {
         LogError("[FF2Stats] Query failed: %s", error);
         return;
     }
@@ -188,7 +194,7 @@ public void db_query_chain_cb(Database db, DBResultSet results, const char[] err
 int count_players() {
     int count = 0;
     for(int client = 1; client <= MaxClients; client++) {
-        if (IsClientInGame(client) && !IsFakeClient(client)) {
+        if (IsValidClient(client) && !IsFakeClient(client)) {
             count++;
         }
     }
@@ -211,7 +217,7 @@ void toggle_stats_cookie(int client) {
     bool state = stats_enabled_for(client);
 
     char s_value[4];
-    IntToString(state, s_value, sizeof(s_value));
+    IntToString(!state, s_value, sizeof(s_value));
 
     pref_cookie.Set(client, s_value);
 }
@@ -239,7 +245,7 @@ bool were_stats_enabled_for(int client) {
 // DB STUFF
 
 public void null_cb(Database db, DBResultSet results, const char[] error, any data) {
-    if (db == null || results == null || error[0] == '\0') {
+    if (db == null || results == null) {
         LogError("[FF2Stats] Query failed: %s", error);
     }
 }
@@ -247,7 +253,7 @@ public void null_cb(Database db, DBResultSet results, const char[] error, any da
 void add_round_to_db_merc(int steam_id, int class, const char[] map_name, int damage, float round_time) {
     char query[255];
 
-    db_conn.Format(query, sizeof(query), "INSERT INTO ff2stats_playerstats (steamid, class, damage_done, map, round_time) VALUES (%d, %d, %d, '%s', %f)",
+    db_conn.Format(query, sizeof(query), "INSERT INTO ff2stats2_playerstats (steamid, class, damage_done, map, round_time) VALUES (%d, %d, %d, '%s', %f)",
         steam_id, class, damage, map_name, round_time);
 
     db_conn.Query(null_cb, query, _);
@@ -256,7 +262,7 @@ void add_round_to_db_merc(int steam_id, int class, const char[] map_name, int da
 void add_round_to_db_map_boss(const char[] boss_name, const char[] map_name, bool boss_won) {
     char query[255];
 
-    db_conn.Format(query, sizeof(query), "INSERT INTO ff2stats_mapbossresults (bossname, map, win) VALUES ('%s', '%s', %d)",
+    db_conn.Format(query, sizeof(query), "INSERT INTO ff2stats2_mapbossresults (bossname, map, win) VALUES ('%s', '%s', %d)",
         boss_name, map_name, boss_won);
 
     db_conn.Query(null_cb, query, _);
@@ -265,7 +271,7 @@ void add_round_to_db_map_boss(const char[] boss_name, const char[] map_name, boo
 void add_round_to_db_player_boss(int steam_id, const char[] boss_name, int kills, bool boss_won, int points) {
     char query[255];
 
-    db_conn.Format(query, sizeof(query), "INSERT INTO ff2stats_personalbossresults (steamid, bossname, kills, win, points) VALUES (%d, '%s', %d, '%s', %d, %d)",
+    db_conn.Format(query, sizeof(query), "INSERT INTO ff2stats2_personalbossresults (steamid, bossname, kills, win, points) VALUES (%d, '%s', %d, %d, %d)",
         steam_id, boss_name, kills, boss_won, points);
 
     db_conn.Query(null_cb, query, _);
@@ -274,7 +280,7 @@ void add_round_to_db_player_boss(int steam_id, const char[] boss_name, int kills
 void get_player_wins_as_boss(int steam_id, const char[] boss_name, int &wins, int &losses) {
     char query[255];
 
-    db_conn.Format(query, sizeof(query), "SELECT sum(win), count(win) - sum(win) FROM ff2stats_personalbossresults WHERE steamid = %d AND bossname = '%s'",
+    db_conn.Format(query, sizeof(query), "SELECT sum(win), count(win) - sum(win) FROM ff2stats2_personalbossresults WHERE steamid = %d AND bossname = '%s'",
         steam_id, boss_name);
 
     SQL_LockDatabase(db_conn);
@@ -298,7 +304,7 @@ void get_player_wins_as_boss(int steam_id, const char[] boss_name, int &wins, in
 void get_map_wins_as_boss(const char[] boss_name, const char[] map_name, int &wins, int &losses) {
     char query[255];
 
-    db_conn.Format(query, sizeof(query), "SELECT sum(win), count(win) - sum(win) FROM ff2stats_mapbossresults WHERE map = '%s' AND bossname = '%s'",
+    db_conn.Format(query, sizeof(query), "SELECT sum(win), count(win) - sum(win) FROM ff2stats2_mapbossresults WHERE map = '%s' AND bossname = '%s'",
         map_name, boss_name);
 
     SQL_LockDatabase(db_conn);
@@ -322,7 +328,7 @@ void get_map_wins_as_boss(const char[] boss_name, const char[] map_name, int &wi
 void clear_player_boss_stats(int steam_id) {
     char query[255];
 
-    db_conn.Format(query, sizeof(query), "DELETE FROM ff2stats_personalbossresults where steamid = %d", steam_id);
+    db_conn.Format(query, sizeof(query), "DELETE FROM ff2stats2_personalbossresults where steamid = %d", steam_id);
 
     db_conn.Query(null_cb, query, _);
 }
@@ -330,15 +336,16 @@ void clear_player_boss_stats(int steam_id) {
 void clear_player_merc_stats(int steam_id) {
     char query[255];
 
-    db_conn.Format(query, sizeof(query), "DELETE FROM ff2stats_playerstats where steamid = %d", steam_id);
+    db_conn.Format(query, sizeof(query), "DELETE FROM ff2stats2_playerstats where steamid = %d", steam_id);
 
     db_conn.Query(null_cb, query, _);
 }
 
 typedef boss_stats_cb = function void(int client, DBResultSet results);
+typedef merc_stats_cb = function void(int client, DBResultSet results);
 
 public void get_boss_stats_cb(Database db, DBResultSet results, const char[] error, any data) {
-    if (db == null || results == null || error[0] == '\0') {
+    if (db == null || results == null) {
         LogError("[FF2Stats] Query failed: %s", error);
         return;
     }
@@ -359,7 +366,7 @@ void get_boss_stats(int client, boss_stats_cb cb) {
 
     int steam_id = GetSteamAccountID(client);
 
-    db_conn.Format(query, sizeof(query), "SELECT bossname, sum(win), count(win) - sum(win) FROM ff2stats_personalbossresults where steamid = %d GROUP BY bossname",
+    db_conn.Format(query, sizeof(query), "SELECT bossname, sum(win), count(win) - sum(win) FROM ff2stats2_personalbossresults where steamid = %d GROUP BY bossname",
         steam_id);
 
     DataPack dp = new DataPack();
@@ -369,6 +376,22 @@ void get_boss_stats(int client, boss_stats_cb cb) {
 
     db_conn.Query(get_boss_stats_cb, query, dp);
 }
+
+// void get_merc_stats_perclass(int client, merc_stats_cb cb) {
+//     char query[255];
+
+//     int steam_id = GetSteamAccountID(client);
+
+//     db_conn.Format(query, sizeof(query), "SELECT class,  FROM ff2stats2_personalbossresults where steamid = %d GROUP BY bossname",
+//         steam_id);
+
+//     DataPack dp = new DataPack();
+//     dp.WriteCell(client);
+//     dp.WriteFunction(cb);
+//     dp.Reset();
+
+//     db_conn.Query(get_boss_stats_cb, query, dp);
+// }
 
 // MENU STUFF
 
@@ -447,8 +470,11 @@ public void ff2stats_view_boss_menu_data_cb(int client, DBResultSet results) {
     int total_losses = 0;
 
     char display[255];
+    bool no_results = true;
 
     while (results.MoreRows) {
+        no_results = false;
+
         results.FetchRow();
 
         char boss_name[255];
@@ -466,6 +492,12 @@ public void ff2stats_view_boss_menu_data_cb(int client, DBResultSet results) {
     }
 
     delete results;
+
+    if (no_results) {
+        CPrintToChat(client, "{olive}[FF2stats]{default} You have no boss stats yet");
+
+        return;
+    }
 
     Format(display, sizeof(display), "Boss Stats (%d total wins, %d total losses)", total_wins, total_losses);
 
@@ -536,6 +568,7 @@ public Action ff2stats_cmd_cb(int client, int args) {
 
 public Action on_round_start(Event event, char[] name, bool dontBroadcast) {
     reset_players();
+    round_end_counted = false;
 
     if (!should_track_stats())
         return Plugin_Continue;
@@ -545,14 +578,28 @@ public Action on_round_start(Event event, char[] name, bool dontBroadcast) {
         return Plugin_Continue;
     }
 
+    LogError("[FF2Stats] round started");
+
     CreateTimer(1.2, set_boss_hp_timer_cb, _, TIMER_FLAG_NO_MAPCHANGE);
 
     return Plugin_Continue;
 }
 
 public Action on_round_stalemate(Event event, char[] name, bool dontBroadcast) {
-    if (!should_track_stats())
+    if (!should_track_stats()) {
+        LogError("[FF2Stats] Not logging round stalemate, requirements not met.");
         return Plugin_Continue;
+    }
+
+    if (round_end_counted)
+        return Plugin_Continue;
+
+    round_end_counted = true;
+
+    float round_time = event.GetFloat("round_time");
+
+    char map_name[255];
+    GetCurrentMap(map_name, sizeof(map_name));
 
     for (int client = 1; client <= MaxClients; client++) {
         if (!IsValidClient(client) || !were_stats_enabled_for(client)) {
@@ -560,7 +607,20 @@ public Action on_round_stalemate(Event event, char[] name, bool dontBroadcast) {
         }
 
         int boss = FF2_GetBossIndex(client);
-        if (boss != -1) {
+
+        if (boss == -1) {
+            // handle players
+
+            int steam_id = GetSteamAccountID(client);
+
+            if (steam_id <= 0)
+                continue;
+
+            int damage = FF2_GetClientDamage(client);
+            TFClassType class = TF2_GetPlayerClass(client);
+
+            add_round_to_db_merc(steam_id, view_as<int>(class), map_name, damage, round_time);
+        } else {
             CPrintToChat(client, "{olive}[FF2stats]{default} A stalemate was encountered, your personal stats will remain the same.");
         }
     }
@@ -569,8 +629,15 @@ public Action on_round_stalemate(Event event, char[] name, bool dontBroadcast) {
 }
 
 public Action on_round_win(Event event, char[] name, bool dontBroadcast) {
-    if (!should_track_stats())
+    if (!should_track_stats()) {
+        LogError("[FF2Stats] Not logging round win, requirements not met.");
         return Plugin_Continue;
+    }
+
+    if (round_end_counted)
+        return Plugin_Continue;
+
+    round_end_counted = true;
 
     float round_time = event.GetFloat("round_time");
     bool boss_won = event.GetInt("team") == FF2_GetBossTeam();
@@ -609,7 +676,7 @@ public Action on_round_win(Event event, char[] name, bool dontBroadcast) {
         add_round_to_db_map_boss(boss_name, map_name, boss_won);
 
         if (!were_stats_enabled_for(client)) {
-            CPrintToChatAll("{olive}[FF2stats]{default} A map-local boss %s was counted for %s.", client, boss_won ? "win" : "loss", boss_name);
+            CPrintToChatAll("{olive}[FF2stats]{default} A map-local boss %s was counted for %s.", boss_won ? "win" : "loss", boss_name);
             continue;
         }
 
@@ -652,7 +719,7 @@ float F_CLAMP(float val, float min, float max) {
     }
 }
 
-// returns a hp mod as 0 +- pct%
+// returns a hp mod as a float ranging from (-1.0, 1.0)
 float calc_hp_mod(int win, int loss) {
     // The greater the distance between win and loss, the greater the increase
     // we don't want 1001 wins and 1000 losses to have a different mod than 11
@@ -666,13 +733,11 @@ float calc_hp_mod(int win, int loss) {
     // more wins -> lose hp, more losses -> gain hp
     float sign = win > loss ? -1.0 : 1.0;
 
+    float scale = FloatAbs(Pow(float(win - loss) / 50.0, 3.0)) * (6.0 / 100.0);
 
-    float scale_const = 1.0 / 200.0;
-
-    float scale = FloatAbs(Pow(float(win - loss) / float(win + loss), 3.0));
-
-    float multiplier = scale * scale_const * sign;
+    float multiplier = scale * sign;
     float max_multiplier = max_hp_mod_pct.FloatValue;
+
     float clamped_multiplier = F_CLAMP(multiplier, -max_multiplier, max_multiplier);
 
     return clamped_multiplier;
@@ -739,10 +804,16 @@ void apply_hp_mod(int client, int boss) {
 
 
 public Action set_boss_hp_timer_cb(Handle timer) {
-    for (int client; client <= MaxClients; client++) {
+    for (int client = 1; client <= MaxClients; client++) {
         if (!IsValidClient(client)) {
             continue;
         }
+
+        if (players[client].mod_applied) {
+            continue;
+        }
+
+        players[client].mod_applied = true;
 
         int boss = FF2_GetBossIndex(client);
         if (boss == -1) {

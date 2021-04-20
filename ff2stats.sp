@@ -17,7 +17,7 @@ Easy/ Med/ Hard gamemodes?
 #define PLUGIN_VERSION "0.2.1"
 
 #define STATS_COOKIE "ff2stats_enabledforuser"
-#define STATS_TABLE "player_stats"
+#define STATS_TABLE "ff2stats2_player_stats"
 #define FF2STATS_MINPLAYERS 8
 
 
@@ -193,7 +193,7 @@ public Action Timer_CommandNotificationLoop(Handle timer) {
 //    win <int>: win count for player
 //    loss <int>: loss count for player
 //    baseHp <int>: base hp to calculate off
-int CalcHpMod(int win, int loss, int baseHp) {
+int calc_hp_mod(int win, int loss, int baseHp) {
     // The greater the distance between win and loss, the greater the increase
     // The greater the difference between win and loss, the greater the increase
 
@@ -578,7 +578,7 @@ void apply_hp_mod(int client, int boss) {
     int win, loss;
     GetPlayerWinsAsBoss(bossSteamID, bossName, win, loss);
     int bossHp = FF2_GetBossMaxHealth(boss);
-    int newHp = CalcHpMod(win, loss, bossHp);
+    int newHp = calc_hp_mod(win, loss, bossHp);
 
     CPrintToChatAll("{olive}[FF2stats]{default} %N has FF2stats enabled and was given a health modifier of %d (old hp: %d, new_hp: %d)! (%d wins, %d losses)", client, newHp-bossHp, bossHp, newHp, win, loss);
     // DEBUG: PrintToChatAll("Base hp: %d, new hp: %d, lives: %d", bossHp, newHp, FF2_GetBossLives(boss));
