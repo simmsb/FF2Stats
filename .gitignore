@@ -1,5 +1,7 @@
 /debug/
-/ff2stats2.smx
-/include/
+/*.smx
+/include/*
 /spcomp
 /spcomp64
+
+!/include/ff2diffforward.inc

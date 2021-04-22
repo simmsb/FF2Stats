@@ -5,6 +5,7 @@
 #include <convars>
 #include <dbi>
 #include <menus>
+#include <ff2diffforward>
 
 #pragma semicolon 1
 #pragma newdecls required
@@ -62,6 +63,7 @@ ConVar min_rounds = null;
 ConVar max_hp_mod_pct = null;
 ConVar min_players = null;
 ConVar map_mod_scale = null;
+ConVar modifier_scale = null;
 
 
 // PLAYER STATE MANAGEMENT
@@ -90,6 +92,7 @@ public void OnPluginStart() {
     max_hp_mod_pct = CreateConVar("ff2stats2_max_hp_mod_pct", "0.3", "Maximum hp mod as a fraction", FCVAR_PROTECTED, true, 0.0, false, _);
     min_players = CreateConVar("ff2stats2_min_players", "6.0", "Minimum players needed for ff2stats to track stats", FCVAR_PROTECTED, true, 0.0, false, _);
     map_mod_scale = CreateConVar("ff2stats2_map_mod_scale", "0.1", "How much to scale the map hp mod by", FCVAR_PROTECTED, true, 0.0, false, _);
+    modifier_scale = CreateConVar("ff2stats2_modifier_scale", "1.0", "Arbitrary value to sclae hp mods by", FCVAR_PROTECTED, true, 0.0, false, _);
 
     HookEvent("teamplay_round_start", on_round_start);
     HookEvent("teamplay_round_win", on_round_win);
@@ -132,7 +135,8 @@ public void OnClientDisconnect(int client) {
 
 // FF2 CALLBACKS
 
-public void FF2_OnDifficulty(int boss, const char[] difficulty, Handle kv) {
+public void OnFF2Difficulty(int boss, const char[] difficulty, Handle kv) {
+    LogError("[FF2Stats] diff: %d, %s", boss, difficulty);
     int userid = FF2_GetBossUserId(boss);
 
     if (userid == -1)
@@ -344,7 +348,7 @@ void clear_player_merc_stats(int steam_id) {
 typedef boss_stats_cb = function void(int client, DBResultSet results);
 typedef merc_stats_cb = function void(int client, DBResultSet results);
 
-public void get_boss_stats_cb(Database db, DBResultSet results, const char[] error, any data) {
+public void get_stats_cb(Database db, DBResultSet results, const char[] error, any data) {
     if (db == null || results == null) {
         LogError("[FF2Stats] Query failed: %s", error);
         return;
@@ -354,6 +358,8 @@ public void get_boss_stats_cb(Database db, DBResultSet results, const char[] err
 
     int client = dp.ReadCell();
     boss_stats_cb cb = view_as<boss_stats_cb>(dp.ReadFunction());
+
+    delete dp;
 
     Call_StartFunction(null, cb);
     Call_PushCell(client);
@@ -366,7 +372,7 @@ void get_boss_stats(int client, boss_stats_cb cb) {
 
     int steam_id = GetSteamAccountID(client);
 
-    db_conn.Format(query, sizeof(query), "SELECT bossname, sum(win), count(win) - sum(win) FROM ff2stats2_personalbossresults where steamid = %d GROUP BY bossname",
+    db_conn.Format(query, sizeof(query), "SELECT bossname, sum(win), count(win) - sum(win), sum(kills), sum(points) FROM ff2stats2_personalbossresults where steamid = %d GROUP BY bossname",
         steam_id);
 
     DataPack dp = new DataPack();
@@ -374,24 +380,24 @@ void get_boss_stats(int client, boss_stats_cb cb) {
     dp.WriteFunction(cb);
     dp.Reset();
 
-    db_conn.Query(get_boss_stats_cb, query, dp);
+    db_conn.Query(get_stats_cb, query, dp);
 }
 
-// void get_merc_stats_perclass(int client, merc_stats_cb cb) {
-//     char query[255];
+void get_merc_stats_perclass(int client, merc_stats_cb cb) {
+    char query[255];
 
-//     int steam_id = GetSteamAccountID(client);
+    int steam_id = GetSteamAccountID(client);
 
-//     db_conn.Format(query, sizeof(query), "SELECT class,  FROM ff2stats2_personalbossresults where steamid = %d GROUP BY bossname",
-//         steam_id);
+    db_conn.Format(query, sizeof(query), "SELECT class, sum(damage_done), sum(round_time) FROM ff2stats2_playerstats where steamid = %d GROUP BY class",
+        steam_id);
 
-//     DataPack dp = new DataPack();
-//     dp.WriteCell(client);
-//     dp.WriteFunction(cb);
-//     dp.Reset();
+    DataPack dp = new DataPack();
+    dp.WriteCell(client);
+    dp.WriteFunction(cb);
+    dp.Reset();
 
-//     db_conn.Query(get_boss_stats_cb, query, dp);
-// }
+    db_conn.Query(get_stats_cb, query, dp);
+}
 
 // MENU STUFF
 
@@ -455,7 +461,7 @@ void confirm_clear_merc_stats_menu(int client) {
 }
 
 
-public int ff2stats_view_boss_menu_cb(Menu menu, MenuAction action, int client, int selection) {
+public int ff2stats_null_menu_cb(Menu menu, MenuAction action, int client, int selection) {
     switch (action) {
         case MenuAction_End: {
             delete menu;
@@ -464,10 +470,12 @@ public int ff2stats_view_boss_menu_cb(Menu menu, MenuAction action, int client, 
 }
 
 public void ff2stats_view_boss_menu_data_cb(int client, DBResultSet results) {
-    Menu m = new Menu(ff2stats_view_boss_menu_cb);
+    Menu m = new Menu(ff2stats_null_menu_cb);
 
     int total_wins = 0;
     int total_losses = 0;
+    int total_kills = 0;
+    int total_points = 0;
 
     char display[255];
     bool no_results = true;
@@ -482,11 +490,16 @@ public void ff2stats_view_boss_menu_data_cb(int client, DBResultSet results) {
 
         int wins = results.FetchInt(1);
         int losses = results.FetchInt(2);
+        int kills = results.FetchInt(3);
+        int points = results.FetchInt(4);
 
         total_wins += wins;
         total_losses += losses;
+        total_kills += kills;
+        total_points += points;
 
-        Format(display, sizeof(display), "%s (%d wins, %d losses)", boss_name, wins, losses);
+        Format(display, sizeof(display), "%s (%d wins, %d losses, %d kills, %d points)",
+            boss_name, wins, losses, kills, points);
 
         m.AddItem(boss_name, display);
     }
@@ -499,7 +512,64 @@ public void ff2stats_view_boss_menu_data_cb(int client, DBResultSet results) {
         return;
     }
 
-    Format(display, sizeof(display), "Boss Stats (%d total wins, %d total losses)", total_wins, total_losses);
+    Format(display, sizeof(display), "Boss Stats (totals: %d wins, %d losses, %d kills, %d poins)",
+        total_wins, total_losses, total_kills, total_points);
+
+    m.ExitBackButton = true;
+    m.SetTitle(display);
+    m.Display(client, 60);
+}
+
+char classnames[][] = {
+    "Unknown",
+    "Scout",
+    "Sniper",
+    "Soldier",
+    "DemoMan",
+    "Medic",
+    "Heavy",
+    "Pyro",
+    "Spy",
+    "Engineer"
+};
+
+public void ff2stats_view_merc_menu_data_cb(int client, DBResultSet results) {
+    Menu m = new Menu(ff2stats_null_menu_cb);
+
+    int total_damage = 0;
+    int total_time = 0;
+
+    char display[255];
+    bool no_results = true;
+
+    while (results.MoreRows) {
+        no_results = false;
+
+        results.FetchRow();
+
+        int class = results.FetchInt(0);
+        int damage = results.FetchInt(1);
+        int round_time = results.FetchInt(2);
+
+        total_damage += damage;
+        total_time += round_time;
+
+        Format(display, sizeof(display), "%s (%d damage, %d seconds in game)",
+            classnames[class], damage, round_time);
+
+        m.AddItem(classnames[class], display);
+    }
+
+    delete results;
+
+    if (no_results) {
+        CPrintToChat(client, "{olive}[FF2stats]{default} You have no merc stats yet");
+
+        return;
+    }
+
+    Format(display, sizeof(display), "Merc Stats (totals: %d damage, %d seconds in game)",
+        total_damage, total_time);
 
     m.ExitBackButton = true;
     m.SetTitle(display);
@@ -508,6 +578,10 @@ public void ff2stats_view_boss_menu_data_cb(int client, DBResultSet results) {
 
 void ff2stats_view_boss_menu(int client) {
     get_boss_stats(client, ff2stats_view_boss_menu_data_cb);
+}
+
+void ff2stats_view_merc_menu(int client) {
+    get_merc_stats_perclass(client, ff2stats_view_merc_menu_data_cb);
 }
 
 public int ff2stats_menu_cb(Menu menu, MenuAction action, int client, int selection) {
@@ -525,6 +599,8 @@ public int ff2stats_menu_cb(Menu menu, MenuAction action, int client, int select
                 CPrintToChat(client, "{olive}[FF2stats]{default} Your personal stats have been %s!", enabled ? "enabled" : "disabled");
             } else if (strcmp("vbs", info) == 0) {
                 ff2stats_view_boss_menu(client);
+            } else if (strcmp("vms", info) == 0) {
+                ff2stats_view_merc_menu(client);
             } else if (strcmp("cbs", info) == 0) {
                 confirm_clear_boss_stats_menu(client);
             } else if (strcmp("cms", info) == 0) {
@@ -544,6 +620,7 @@ void ff2stats_menu(int client) {
     m.SetTitle("FF2Stats");
     m.AddItem("tps", tps_msg);
     m.AddItem("vbs", "View boss stats");
+    m.AddItem("vms", "View merc stats");
     m.AddItem("cbs", "Clear boss stats");
     m.AddItem("cms", "Clear merc stats");
     m.Display(client, 60);
@@ -727,18 +804,21 @@ float calc_hp_mod(int win, int loss) {
 
     // if wins and losses less than the min rounds, no modification
     if ((win + loss) < min_rounds.IntValue) {
+        LogError("[FF2Stats] using zero modifier (rounds < %d)", min_rounds.IntValue);
         return 0.0;
     }
 
     // more wins -> lose hp, more losses -> gain hp
     float sign = win > loss ? -1.0 : 1.0;
 
-    float scale = FloatAbs(Pow(float(win - loss) / 50.0, 3.0)) * (6.0 / 100.0);
+    float scale = FloatAbs(Pow(float(win - loss) / 50.0, 3.0)) * modifier_scale.FloatValue;
 
     float multiplier = scale * sign;
     float max_multiplier = max_hp_mod_pct.FloatValue;
 
     float clamped_multiplier = F_CLAMP(multiplier, -max_multiplier, max_multiplier);
+
+    LogError("[FF2Stats] multiplier before clamp: %f, after: %f", multiplier, clamped_multiplier);
 
     return clamped_multiplier;
 }
@@ -785,17 +865,24 @@ void apply_hp_mod(int client, int boss) {
     float map_mod = calc_hp_mod(map_win, map_loss);
     int new_hp = calc_final_hp_mod(player_mod, map_mod, boss_hp);
 
+    float visual_difficulty_mod = difficulty_as_hp_mod(players[client].difficulty);
+    int visual_initial_hp = RoundFloat(boss_hp * visual_difficulty_mod);
+    int visual_final_hp = RoundFloat(new_hp * visual_difficulty_mod);
+
+    int visual_hp_diff = visual_final_hp - visual_initial_hp;
+    float mod_pct = 100.0 * (player_mod + map_mod);
+
     if (stats_enabled) {
-        CPrintToChatAll("{olive}[FF2stats]{default} %N has FF2stats enabled and was given a health modifier of %d (old hp: %d, new_hp: %d)! (%d wins, %d losses) (%d map wins, %d map losses)",
-            client, new_hp - boss_hp, boss_hp, new_hp, player_win, player_loss, map_win, map_loss);
+        CPrintToChatAll("{olive}[FF2stats]{default} %N has FF2stats enabled and was given a health modifier of %d (%.2f%%)! (%d wins, %d losses) (%d map wins, %d map losses)",
+            client, visual_hp_diff, mod_pct, player_win, player_loss, map_win, map_loss);
     } else {
 
-        CPrintToChatAll("{olive}[FF2stats]{default} %N was given a health modifier of %d (old hp: %d, new_hp: %d)! (%d map wins, %d map losses)",
-            client, new_hp - boss_hp, boss_hp, new_hp, map_win, map_loss);
+        CPrintToChatAll("{olive}[FF2stats]{default} %N was given a health modifier of %d (%.2f%%)! (%d map wins, %d map losses)",
+            client, visual_hp_diff, mod_pct, map_win, map_loss);
     }
 
     FF2_SetBossMaxHealth(boss, new_hp);
-    FF2_SetBossHealth(boss, new_hp * FF2_GetBossLives(boss));
+    FF2_SetBossHealth(boss, new_hp * FF2_GetBossMaxLives(boss));
     // also set boss health, because it likes to break it somewhere else
 }
 
@@ -834,7 +921,7 @@ public Action command_notif_timer_cb(Handle timer) {
     if (print_loop == 0) {
         CPrintToChatAll("{olive}[FF2stats]{default} Use the command !ff2stats to open the ff2stats menu.");
     } else if (print_loop == 1) {
-        CPrintToChatAll("{olive}[FF2stats]{default} Use the command !top10 to view the leaderboards.");
+        // CPrintToChatAll("{olive}[FF2stats]{default} Use the command !top10 to view the leaderboards.");
     }
 
     print_loop++;
@@ -847,6 +934,18 @@ public Action command_notif_timer_cb(Handle timer) {
 
 int difficulty_as_points(int difficulty) {
     return difficulty * 2 + 1;
+}
+
+float difficulty_as_hp_mod(int difficulty) {
+    switch (difficulty) {
+        case 0: return 1.0;
+        case 1: return 0.8;
+        case 2: return 0.75;
+        case 3: return 0.65;
+        case 4: return 0.5;
+        case 5: return 0.25;
+        default: return 1.0;
+    }
 }
 
 int difficulty_as_int(const char[] difficulty) {
