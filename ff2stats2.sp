@@ -30,6 +30,7 @@ enum struct PlayerInfo {
     bool stats_enabled;
     int difficulty;
     bool mod_applied;
+    TFClassType class;
 
     void joined(int client) {
         this.active = true;
@@ -38,6 +39,7 @@ enum struct PlayerInfo {
         this.stats_enabled = false;
         this.difficulty = 0;
         this.mod_applied = false;
+        this.class = TFClass_Unknown;
     }
 
     void left() {
@@ -49,6 +51,7 @@ enum struct PlayerInfo {
         this.stats_enabled = false;
         this.difficulty = 0;
         this.mod_applied = false;
+        this.class = TFClass_Unknown;
     }
 }
 
@@ -388,7 +391,7 @@ void get_merc_stats_perclass(int client, merc_stats_cb cb) {
 
     int steam_id = GetSteamAccountID(client);
 
-    db_conn.Format(query, sizeof(query), "SELECT class, sum(damage_done), sum(round_time) FROM ff2stats2_playerstats where steamid = %d GROUP BY class",
+    db_conn.Format(query, sizeof(query), "SELECT class, sum(damage_done), sum(round_time) FROM ff2stats2_playerstats where steamid = %d GROUP BY class ORDER BY class",
         steam_id);
 
     DataPack dp = new DataPack();
@@ -523,15 +526,33 @@ public void ff2stats_view_boss_menu_data_cb(int client, DBResultSet results) {
 char classnames[][] = {
     "Unknown",
     "Scout",
-    "Sniper",
     "Soldier",
-    "DemoMan",
-    "Medic",
-    "Heavy",
     "Pyro",
-    "Spy",
-    "Engineer"
+    "DemoMan",
+    "Heavy",
+    "Engineer",
+    "Medic",
+    "Sniper",
+    "Spy"
 };
+
+int class_lookup[] = {
+    0,
+    1, // scout
+    8, // sniper
+    2, // soldier
+    4, // demo
+    7, // medic
+    5, // heavy
+    3, // pyro
+    9, // spy
+    6 // engineer
+};
+
+enum struct MercStat {
+    int damage;
+    int round_time;
+}
 
 public void ff2stats_view_merc_menu_data_cb(int client, DBResultSet results) {
     Menu m = new Menu(ff2stats_null_menu_cb);
@@ -540,11 +561,10 @@ public void ff2stats_view_merc_menu_data_cb(int client, DBResultSet results) {
     int total_time = 0;
 
     char display[255];
-    bool no_results = true;
+
+    MercStat merc_stats[10];
 
     while (results.MoreRows) {
-        no_results = false;
-
         results.FetchRow();
 
         int class = results.FetchInt(0);
@@ -554,18 +574,17 @@ public void ff2stats_view_merc_menu_data_cb(int client, DBResultSet results) {
         total_damage += damage;
         total_time += round_time;
 
-        Format(display, sizeof(display), "%s (%d damage, %d seconds in game)",
-            classnames[class], damage, round_time);
-
-        m.AddItem(classnames[class], display);
+        merc_stats[class_lookup[class]].damage = damage;
+        merc_stats[class_lookup[class]].round_time = round_time;
     }
 
     delete results;
 
-    if (no_results) {
-        CPrintToChat(client, "{olive}[FF2stats]{default} You have no merc stats yet");
+    for (int i = 1; i < 10; i++) {
+        Format(display, sizeof(display), "%s (%d damage, %d seconds in game)",
+            classnames[i], merc_stats[i].damage, merc_stats[i].round_time);
 
-        return;
+        m.AddItem(classnames[i], display);
     }
 
     Format(display, sizeof(display), "Merc Stats (totals: %d damage, %d seconds in game)",
@@ -657,7 +676,7 @@ public Action on_round_start(Event event, char[] name, bool dontBroadcast) {
 
     LogError("[FF2Stats] round started");
 
-    CreateTimer(1.2, set_boss_hp_timer_cb, _, TIMER_FLAG_NO_MAPCHANGE);
+    CreateTimer(3.0, set_boss_hp_timer_cb, _, TIMER_FLAG_NO_MAPCHANGE);
 
     return Plugin_Continue;
 }
@@ -738,7 +757,12 @@ public Action on_round_win(Event event, char[] name, bool dontBroadcast) {
                 continue;
 
             int damage = FF2_GetClientDamage(client);
-            TFClassType class = TF2_GetPlayerClass(client);
+            TFClassType class = players[client].class;
+
+            if (class == TFClassType) {
+                // don't record unknown classes
+                continue;
+            }
 
             add_round_to_db_merc(steam_id, view_as<int>(class), map_name, damage, round_time);
 
@@ -904,6 +928,7 @@ public Action set_boss_hp_timer_cb(Handle timer) {
 
         int boss = FF2_GetBossIndex(client);
         if (boss == -1) {
+            players[client].class = TF2_GetPlayerClass(client);
             continue;
         }
 
